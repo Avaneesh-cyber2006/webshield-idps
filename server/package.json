@@ -1,0 +1,36 @@
+{
+  "name": "webshield-server",
+  "version": "1.0.0",
+  "description": "WebShield IDPS Backend Server",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "NODE_ENV=production node src/server.js",
+    "test": "node tests/unit/detectors.test.js && node tests/unit/riskScoring.test.js && node tests/unit/decisionEngine.test.js && node tests/unit/metrics.test.js && node tests/integration/api.test.js",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "prisma": "^5.7.1",
+    "@prisma/client": "^5.7.1",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4",
+    "axios": "^1.6.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2",
+    "vitest": "^1.1.0",
+    "supertest": "^6.3.3",
+    "@vitest/coverage-v8": "^1.1.0"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}

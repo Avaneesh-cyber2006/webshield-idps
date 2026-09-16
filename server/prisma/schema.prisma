@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("user") // "admin" or "user"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityEvent {
+  id          String   @id @default(uuid())
+  requestId   String
+  timestamp   DateTime @default(now())
+  sourceIp    String
+  method      String
+  path        String
+  attackType  String?
+  severity    String
+  riskScore   Int
+  action      String
+  description String
+  userAgent   String?
+  blocked     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model BlockedSource {
+  id        String   @id @default(uuid())
+  sourceIp  String   @unique
+  reason    String
+  blockedAt DateTime @default(now())
+  expiresAt DateTime?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model SecurityRule {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    String
+  enabled     Boolean  @default(true)
+  severity    String
+  score       Int
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TrafficEvent {
+  id          String   @id @default(uuid())
+  requestId   String
+  timestamp   DateTime @default(now())
+  sourceIp    String
+  method      String
+  path        String
+  query       String?
+  body        String?
+  userAgent   String?
+  status      Int
+  riskScore   Int      @default(0)
+  action      String   @default("ALLOW")
+  createdAt   DateTime @default(now())
+}
+
+model TestRun {
+  id            String   @id @default(uuid())
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  totalTests    Int
+  passed        Int      @default(0)
+  failed        Int      @default(0)
+  truePositive  Int      @default(0)
+  trueNegative  Int      @default(0)
+  falsePositive Int      @default(0)
+  falseNegative Int      @default(0)
+  accuracy      Float?
+  precision     Float?
+  recall        Float?
+  f1Score       Float?
+  results       TestResult[]
+  createdAt     DateTime @default(now())
+}
+
+model TestResult {
+  id             String   @id @default(uuid())
+  testRunId      String
+  testName       String
+  expectedType   String
+  expectedAction String
+  actualType     String?
+  actualAction   String?
+  riskScore      Int?
+  passed         Boolean
+  createdAt      DateTime @default(now())
+
+  testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+}
+
+model DeviceLabel {
+  id        String   @id @default(uuid())
+  sourceIp  String   @unique
+  label     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
