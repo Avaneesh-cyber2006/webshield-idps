@@ -41,6 +41,46 @@ class IDPSInspector {
       startTime: Date.now()
     };
 
+    // Register response-finish listener BEFORE any possible early return
+    res.on('finish', async () => {
+      try {
+        // Post-response: handle auth failure detection
+        const isAuthFailure = res.statusCode === 401 && (req.originalUrl || req.path).includes('/api/auth');
+
+        if (isAuthFailure) {
+          // Run auth abuse detector with failure flag
+          const authDetectionData = {
+            sourceIp,
+            method: req.method,
+            path: req.originalUrl || req.path,
+            query: req.query,
+            body: req.body,
+            headers: req.headers,
+            userAgent: req.headers['user-agent'],
+            isAuthFailure: true
+          };
+          const authResults = this.detectors.runAll(authDetectionData);
+          const authRiskResult = this.riskEngine.calculate(authResults);
+
+          if (authRiskResult.score > 0) {
+            await this.logSecurityEvent(req, {
+              attackType: authRiskResult.categories.join(', ') || 'AUTH_FAILURE',
+              severity: authRiskResult.severity,
+              riskScore: authRiskResult.score,
+              action: 'ALERT',
+              description: 'Authentication failure detected',
+              blocked: false
+            });
+          }
+        }
+
+        // Log traffic event
+        await this.logTrafficEvent(req, res);
+      } catch (error) {
+        console.error('Error in response-finish handler:', error);
+      }
+    });
+
     // Check if source is blocked
     const blockedSource = await this.prevention.checkBlocked(sourceIp);
     if (blockedSource) {
@@ -65,7 +105,7 @@ class IDPSInspector {
     const detectionData = {
       sourceIp,
       method: req.method,
-      path: req.path,
+      path: req.originalUrl || req.path,
       query: req.query,
       body: req.body,
       headers: req.headers,
@@ -166,37 +206,9 @@ class IDPSInspector {
     }
 
     // Continue to route handler
+    // Add request ID to response headers for correlation
+    res.setHeader('X-Request-ID', requestId);
     next();
-
-    // Post-response: handle auth failure detection
-    res.on('finish', async () => {
-      // Check if this was an authentication failure based on status code
-      const isAuthFailure = res.statusCode === 401 && req.path.startsWith('/api/auth');
-
-      if (isAuthFailure) {
-        // Run auth abuse detector with failure flag
-        const authDetectionData = {
-          ...detectionData,
-          isAuthFailure: true
-        };
-        const authResults = this.detectors.runAll(authDetectionData);
-        const authRiskResult = this.riskEngine.calculate(authResults);
-
-        if (authRiskResult.score > 0) {
-          await this.logSecurityEvent(req, {
-            attackType: authRiskResult.categories.join(', ') || 'AUTH_FAILURE',
-            severity: authRiskResult.severity,
-            riskScore: authRiskResult.score,
-            action: 'ALERT',
-            description: 'Authentication failure detected',
-            blocked: false
-          });
-        }
-      }
-
-      // Log traffic event
-      await this.logTrafficEvent(req, res);
-    });
   }
 
   async logSecurityEvent(req, eventData) {

@@ -47,14 +47,92 @@ const TestLab = () => {
     setShowReport(false)
 
     try {
-      const response = await api.post('/test-lab/run-all')
-      setCurrentTestRun(response.data)
+      // Fetch test configurations for browser-originated execution
+      const configResponse = await api.get('/test-lab/config')
+      const testConfigs = configResponse.data.configs
+
+      // Execute tests from the browser
+      const results = []
+      for (const config of testConfigs) {
+        const result = await executeBrowserTest(config)
+        results.push(result)
+      }
+
+      // Submit results to server
+      const submitResponse = await api.post('/test-lab/submit', {
+        results
+      })
+
+      setCurrentTestRun(submitResponse.data)
       setShowReport(true)
       fetchTestRuns()
     } catch (error) {
       console.error('Test suite failed:', error)
     } finally {
       setRunning(false)
+    }
+  }
+
+  const executeBrowserTest = async (config) => {
+    const { testId, endpoint, method, payload, headers, repeatCount } = config
+    const results = []
+
+    for (let i = 0; i < repeatCount; i++) {
+      try {
+        const url = `/api${endpoint}`
+
+        let response
+        if (method === 'GET') {
+          const queryParams = new URLSearchParams(payload).toString()
+          response = await fetch(`${url}?${queryParams}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              ...headers
+            },
+            credentials: 'include'
+          })
+        } else {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...headers
+            },
+            credentials: 'include',
+            body: JSON.stringify(payload)
+          })
+        }
+
+        const requestId = response.headers.get('X-Request-ID')
+        const data = await response.json()
+
+        results.push({
+          testId,
+          httpStatus: response.status,
+          requestId,
+          success: response.ok,
+          data
+        })
+      } catch (error) {
+        results.push({
+          testId,
+          httpStatus: 0,
+          requestId: null,
+          success: false,
+          error: error.message
+        })
+      }
+    }
+
+    // Return the last result (or error if all failed)
+    const lastResult = results[results.length - 1]
+    return {
+      testId,
+      httpStatus: lastResult.httpStatus,
+      requestId: lastResult.requestId,
+      success: lastResult.success,
+      error: lastResult.error
     }
   }
 

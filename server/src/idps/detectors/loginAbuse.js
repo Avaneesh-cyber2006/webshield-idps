@@ -54,7 +54,7 @@ class LoginAbuseDetector {
 
   isAuthEndpoint(path) {
     const authEndpoints = ['/api/auth/login', '/api/auth/register', '/api/auth'];
-    return authEndpoints.some(endpoint => path.startsWith(endpoint));
+    return authEndpoints.some(endpoint => path.includes(endpoint));
   }
 
   clear(sourceIp) {

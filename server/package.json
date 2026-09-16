@@ -7,7 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "cross-env NODE_ENV=production node src/server.js",
     "start:unix": "NODE_ENV=production node src/server.js",
-    "test": "node tests/unit/detectors.test.js && node tests/unit/riskScoring.test.js && node tests/unit/decisionEngine.test.js && node tests/unit/metrics.test.js && node tests/integration/api.test.js && node tests/integration/idps.test.js && node tests/integration/ip-spoofing.test.js",
+    "test": "node tests/unit/detectors.test.js && node tests/unit/riskScoring.test.js && node tests/unit/decisionEngine.test.js && node tests/unit/metrics.test.js && node tests/integration/api.test.js && node tests/integration/idps.test.js && node tests/integration/ip-spoofing.test.js && node tests/integration/auth-abuse.test.js",
     "test:watch": "vitest --watch"
   },
   "dependencies": {

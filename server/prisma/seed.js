@@ -6,16 +6,19 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('Starting seed...');
 
-  // Hash passwords
-  const adminPassword = await bcrypt.hash('admin123', 10);
-  const userPassword = await bcrypt.hash('user123', 10);
+  // Hash passwords - these should be changed for production/LAN use
+  const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 10);
+  const userPassword = await bcrypt.hash(process.env.USER_PASSWORD || 'user123', 10);
+
+  console.log('Using admin email:', process.env.ADMIN_EMAIL || 'admin@webshield.local');
+  console.log('Using user email:', process.env.USER_EMAIL || 'user@webshield.local');
 
   // Create users
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@webshield.local' },
-    update: {},
+    where: { email: process.env.ADMIN_EMAIL || 'admin@webshield.local' },
+    update: { password: adminPassword },
     create: {
-      email: 'admin@webshield.local',
+      email: process.env.ADMIN_EMAIL || 'admin@webshield.local',
       password: adminPassword,
       name: 'Admin User',
       role: 'admin'
@@ -23,10 +26,10 @@ async function main() {
   });
 
   const user = await prisma.user.upsert({
-    where: { email: 'user@webshield.local' },
-    update: {},
+    where: { email: process.env.USER_EMAIL || 'user@webshield.local' },
+    update: { password: userPassword },
     create: {
-      email: 'user@webshield.local',
+      email: process.env.USER_EMAIL || 'user@webshield.local',
       password: userPassword,
       name: 'Demo User',
       role: 'user'

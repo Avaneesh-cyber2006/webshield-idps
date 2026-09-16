@@ -471,9 +471,10 @@ async function executeTest(test, req) {
         const promises = [];
         for (let i = 0; i < 51; i++) {
           promises.push(
-            axios.get(`${baseUrl}/api/public`, {
+            axios.get(`${baseUrl}/api/demo/dashboard`, {
               headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Cookie': req.headers.cookie || ''
               }
             }).catch(() => {})
           );
@@ -689,8 +690,8 @@ async function getTestConfig(req, res) {
                 test.id === 'path_traversal' ? '/api/demo/search' :
                 test.id === 'invalid_auth' ? '/api/auth/login' :
                 test.id === 'repeated_login_failure' ? '/api/auth/login' :
-                test.id === 'request_rate_abuse' ? '/api/public' :
-                test.id === 'suspicious_user_agent' ? '/api/public' :
+                test.id === 'request_rate_abuse' ? '/api/demo/dashboard' :
+                test.id === 'suspicious_user_agent' ? '/api/demo/dashboard' :
                 test.id === 'oversized_payload' ? '/api/demo/contact' : '/api/public',
       method: test.id === 'normal_request' ? 'GET' :
               test.id === 'normal_login' ? 'POST' :
