@@ -39,7 +39,13 @@ app.use((req, res, next) => {
 });
 
 // Initialize IDPS middleware (will be set up after server creation)
-let idpsMiddleware = (req, res, next) => next();
+let idpsMiddleware = (req, res, next) => {
+  const inspector = getInspector();
+  if (inspector) {
+    return inspector.inspect(req, res, next);
+  }
+  next();
+};
 
 // API routes (protected by IDPS)
 app.use('/api/auth', idpsMiddleware, authRoutes);
@@ -86,7 +92,8 @@ app.use((err, req, res, next) => {
 
 // Initialize IDPS with Socket.IO
 function initializeIDPS(io) {
-  idpsMiddleware = createIDPSMiddleware(io);
+  const middleware = createIDPSMiddleware(io);
+  idpsMiddleware = middleware;
 
   // Load saved mode from database
   prisma.systemSetting.findUnique({

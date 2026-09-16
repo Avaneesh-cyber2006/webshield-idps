@@ -17,6 +17,9 @@ class IDPSInspector {
     this.decisionEngine = new DecisionEngine();
     this.prevention = new PreventionLayer();
     this.io = io;
+
+    // Load disabled detectors from database
+    this.detectors.loadDisabledDetectors();
   }
 
   setMode(mode) {
@@ -58,7 +61,7 @@ class IDPSInspector {
       });
     }
 
-    // Prepare detection data
+    // Prepare detection data for pre-response detection
     const detectionData = {
       sourceIp,
       method: req.method,
@@ -88,7 +91,7 @@ class IDPSInspector {
     // Store decision in request
     req.idps.action = decision.action;
 
-    // Handle prevention
+    // Handle prevention based on decision
     if (decision.action === 'BLOCK') {
       await this.prevention.blockSource(sourceIp, decision.reason, false);
       await this.logSecurityEvent(req, {
@@ -162,12 +165,38 @@ class IDPSInspector {
       }
     }
 
-    // Log traffic event after response is sent
+    // Continue to route handler
+    next();
+
+    // Post-response: handle auth failure detection
     res.on('finish', async () => {
+      // Check if this was an authentication failure based on status code
+      const isAuthFailure = res.statusCode === 401 && req.path.startsWith('/api/auth');
+
+      if (isAuthFailure) {
+        // Run auth abuse detector with failure flag
+        const authDetectionData = {
+          ...detectionData,
+          isAuthFailure: true
+        };
+        const authResults = this.detectors.runAll(authDetectionData);
+        const authRiskResult = this.riskEngine.calculate(authResults);
+
+        if (authRiskResult.score > 0) {
+          await this.logSecurityEvent(req, {
+            attackType: authRiskResult.categories.join(', ') || 'AUTH_FAILURE',
+            severity: authRiskResult.severity,
+            riskScore: authRiskResult.score,
+            action: 'ALERT',
+            description: 'Authentication failure detected',
+            blocked: false
+          });
+        }
+      }
+
+      // Log traffic event
       await this.logTrafficEvent(req, res);
     });
-
-    next();
   }
 
   async logSecurityEvent(req, eventData) {

@@ -253,10 +253,31 @@ async function updateSecurityRule(req, res) {
     const { id } = req.params;
     const { enabled } = req.body;
 
+    const rule = await prisma.securityRule.findUnique({
+      where: { id }
+    });
+
+    if (!rule) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rule not found'
+      });
+    }
+
     await prisma.securityRule.update({
       where: { id },
       data: { enabled }
     });
+
+    // Update detector registry
+    const { getInspector } = require('../middleware/idps');
+    const inspector = getInspector();
+    if (inspector) {
+      const registry = inspector.detectors;
+      if (registry && registry.setDetectorEnabled) {
+        registry.setDetectorEnabled(rule.name, enabled);
+      }
+    }
 
     res.json({
       success: true,
