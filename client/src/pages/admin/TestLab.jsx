@@ -58,16 +58,17 @@ const TestLab = () => {
         results.push(result)
       }
 
-      // Submit results to server
+      // Submit batch results to server
       const submitResponse = await api.post('/test-lab/submit', {
         results
       })
 
-      setCurrentTestRun(submitResponse.data)
+      setCurrentTestRun(submitResponse.data.testRun)
       setShowReport(true)
       fetchTestRuns()
     } catch (error) {
       console.error('Test suite failed:', error)
+      alert('Test suite failed: ' + (error.response?.data?.message || error.message))
     } finally {
       setRunning(false)
     }
@@ -79,7 +80,7 @@ const TestLab = () => {
 
     for (let i = 0; i < repeatCount; i++) {
       try {
-        const url = `/api${endpoint}`
+        const url = endpoint  // Backend now returns full path without /api prefix
 
         let response
         if (method === 'GET') {

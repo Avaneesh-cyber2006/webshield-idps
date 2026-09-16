@@ -2,6 +2,48 @@ const bcrypt = require('bcrypt');
 const prisma = require('../config/database');
 const { generateToken } = require('../middleware/auth');
 
+// Simple in-memory rate limiter for auth failures
+const authFailureMap = new Map();
+const AUTH_FAILURE_THRESHOLD = 10;
+const AUTH_FAILURE_WINDOW = 60000; // 1 minute
+
+function checkAuthRateLimit(sourceIp) {
+  const now = Date.now();
+  const key = sourceIp;
+
+  if (!authFailureMap.has(key)) {
+    authFailureMap.set(key, []);
+  }
+
+  const failures = authFailureMap.get(key);
+
+  // Remove failures older than the window
+  const recentFailures = failures.filter(timestamp => now - timestamp < AUTH_FAILURE_WINDOW);
+  authFailureMap.set(key, recentFailures);
+
+  // Check threshold
+  if (recentFailures.length >= AUTH_FAILURE_THRESHOLD) {
+    return {
+      allowed: false,
+      resetTime: recentFailures[0] + AUTH_FAILURE_WINDOW
+    };
+  }
+
+  return { allowed: true };
+}
+
+function recordAuthFailure(sourceIp) {
+  const key = sourceIp;
+  if (!authFailureMap.has(key)) {
+    authFailureMap.set(key, []);
+  }
+  authFailureMap.get(key).push(Date.now());
+}
+
+function clearAuthFailures(sourceIp) {
+  authFailureMap.delete(sourceIp);
+}
+
 /**
  * User registration
  */
@@ -78,10 +120,24 @@ async function register(req, res) {
 async function login(req, res) {
   try {
     const { email, password } = req.body;
+    const { getClientIp } = require('../utils/ip');
+    const sourceIp = getClientIp(req);
+
+    // Pre-authentication rate limiting
+    const rateLimitResult = checkAuthRateLimit(sourceIp);
+    if (!rateLimitResult.allowed) {
+      req.authFailure = true;
+      return res.status(429).json({
+        success: false,
+        message: 'Too many authentication attempts. Please try again later.',
+        retryAfter: Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)
+      });
+    }
 
     // Validate input
     if (!email || !password) {
       req.authFailure = true;
+      recordAuthFailure(sourceIp);
       return res.status(400).json({
         success: false,
         message: 'Email and password are required'
@@ -95,6 +151,7 @@ async function login(req, res) {
 
     if (!user) {
       req.authFailure = true;
+      recordAuthFailure(sourceIp);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -106,11 +163,15 @@ async function login(req, res) {
 
     if (!validPassword) {
       req.authFailure = true;
+      recordAuthFailure(sourceIp);
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
+
+    // Clear auth failures on successful login
+    clearAuthFailures(sourceIp);
 
     // Generate token
     const token = generateToken(user);
@@ -206,5 +267,8 @@ module.exports = {
   login,
   logout,
   getCurrentUser,
-  getSocketToken
+  getSocketToken,
+  checkAuthRateLimit,
+  recordAuthFailure,
+  clearAuthFailures
 };

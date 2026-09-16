@@ -16,7 +16,7 @@ class PathTraversalDetector {
       /\/windows\//i,
       /c:\\/i,
       /file:\/\//i,
-      /~\/+/g
+      /~\/+/
     ];
   }
 

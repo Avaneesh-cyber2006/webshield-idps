@@ -41,6 +41,9 @@ class IDPSInspector {
       startTime: Date.now()
     };
 
+    // Add request ID to response headers IMMEDIATELY for correlation
+    res.setHeader('X-Request-ID', requestId);
+
     // Register response-finish listener BEFORE any possible early return
     res.on('finish', async () => {
       try {
@@ -206,8 +209,6 @@ class IDPSInspector {
     }
 
     // Continue to route handler
-    // Add request ID to response headers for correlation
-    res.setHeader('X-Request-ID', requestId);
     next();
   }
 
@@ -237,6 +238,7 @@ class IDPSInspector {
       // Emit socket event to admin room only
       if (this.io) {
         this.io.to('admin').emit('security:new', event);
+        this.io.to('admin').emit('metrics:update');
       }
 
       return event;
