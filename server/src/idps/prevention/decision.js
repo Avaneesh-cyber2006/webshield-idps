@@ -76,9 +76,10 @@ class DecisionEngine {
         };
       }
 
+      // Low or zero risk in IPS mode - allow
       return {
-        action: this.config.actions.ALERT,
-        reason: 'IPS mode - alert for moderate risk'
+        action: this.config.actions.ALLOW,
+        reason: 'IPS mode - low risk allowed'
       };
     }
 

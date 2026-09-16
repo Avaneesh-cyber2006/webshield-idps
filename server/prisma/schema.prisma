@@ -95,6 +95,7 @@ model TestRun {
   precision     Float?
   recall        Float?
   f1Score       Float?
+  methodology    String?
   results       TestResult[]
   createdAt     DateTime @default(now())
 }

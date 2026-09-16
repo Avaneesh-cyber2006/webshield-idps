@@ -162,8 +162,10 @@ class IDPSInspector {
       }
     }
 
-    // Log traffic event
-    await this.logTrafficEvent(req, res);
+    // Log traffic event after response is sent
+    res.on('finish', async () => {
+      await this.logTrafficEvent(req, res);
+    });
 
     next();
   }
@@ -191,9 +193,9 @@ class IDPSInspector {
         }
       });
 
-      // Emit socket event
+      // Emit socket event to admin room only
       if (this.io) {
-        this.io.emit('security:new', event);
+        this.io.to('admin').emit('security:new', event);
       }
 
       return event;
@@ -223,9 +225,9 @@ class IDPSInspector {
         }
       });
 
-      // Emit socket event
+      // Emit socket event to admin room only
       if (this.io) {
-        this.io.emit('traffic:new', {
+        this.io.to('admin').emit('traffic:new', {
           requestId: req.idps.requestId,
           sourceIp: req.idps.sourceIp,
           method: req.method,

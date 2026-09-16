@@ -48,7 +48,7 @@ async function register(req, res) {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.COOKIE_SECURE === 'true',
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     });
@@ -117,7 +117,7 @@ async function login(req, res) {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: process.env.COOKIE_SECURE === 'true',
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     });
@@ -181,9 +181,30 @@ async function getCurrentUser(req, res) {
   }
 }
 
+/**
+ * Get socket token for authentication
+ */
+async function getSocketToken(req, res) {
+  try {
+    // Generate a temporary token for socket authentication
+    const token = generateToken(req.user);
+    res.json({
+      success: true,
+      token
+    });
+  } catch (error) {
+    console.error('Get socket token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate socket token'
+    });
+  }
+}
+
 module.exports = {
   register,
   login,
   logout,
-  getCurrentUser
+  getCurrentUser,
+  getSocketToken
 };

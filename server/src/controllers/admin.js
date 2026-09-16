@@ -475,6 +475,53 @@ async function getDeviceLabels(req, res) {
   }
 }
 
+/**
+ * Get traffic events for system logs
+ */
+async function getTrafficEvents(req, res) {
+  try {
+    const { limit = 50 } = req.query;
+    const events = await prisma.trafficEvent.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: parseInt(limit)
+    });
+
+    res.json({
+      success: true,
+      events
+    });
+  } catch (error) {
+    console.error('Get traffic events error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to load traffic events'
+    });
+  }
+}
+
+/**
+ * Get client IP for network demo
+ */
+async function getClientIp(req, res) {
+  try {
+    const { getClientIp } = require('../utils/ip');
+    const clientIp = getClientIp(req);
+
+    res.json({
+      success: true,
+      clientIp,
+      userAgent: req.headers['user-agent'] || 'unknown',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Get client IP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get client IP'
+    });
+  }
+}
+
 module.exports = {
   getOverview,
   getTraffic,
@@ -488,5 +535,7 @@ module.exports = {
   setMode,
   getSettings,
   updateDeviceLabel,
-  getDeviceLabels
+  getDeviceLabels,
+  getTrafficEvents,
+  getClientIp
 };

@@ -20,13 +20,13 @@ const NetworkDemo = () => {
       setServerAddress(window.location.host)
 
       // Get client IP from API
-      const response = await api.get('/api/public')
-      // In a real implementation, the server would return the client IP
-      setClientAddress('Detecting...')
+      const response = await api.get('/admin/client-ip')
+      setClientAddress(response.data.clientIp)
 
       setSocketStatus(connected)
     } catch (error) {
       console.error('Failed to fetch network info:', error)
+      setClientAddress('Error fetching IP')
     }
   }
 

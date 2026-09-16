@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'webshield-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'webshield-test-secret-for-development';
+
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET environment variable is required in production. Set it in .env file.');
+}
 
 /**
  * Generate JWT token

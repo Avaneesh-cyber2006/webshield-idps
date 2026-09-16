@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
+import api from '../services/api'
 import {
   LayoutDashboard,
   Activity,
@@ -23,7 +24,15 @@ const AdminLayout = () => {
   const location = useLocation()
 
   useEffect(() => {
-    joinAdminRoom()
+    const joinRoom = async () => {
+      try {
+        const response = await api.get('/auth/socket-token')
+        joinAdminRoom(response.data.token)
+      } catch (error) {
+        console.error('Failed to get socket token:', error)
+      }
+    }
+    joinRoom()
     return () => leaveAdminRoom()
   }, [joinAdminRoom, leaveAdminRoom])
 

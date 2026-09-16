@@ -50,8 +50,8 @@ assert.strictEqual(decision6.action, 'TEMP_BLOCK', 'Decision engine: should TEMP
 const decision7 = engine.decide(30, null)
 assert.strictEqual(decision7.action, 'RATE_LIMIT', 'Decision engine: should RATE_LIMIT in IPS mode for medium risk')
 
-// Test 11: ALERT in IPS mode for low risk
+// Test 11: ALLOW in IPS mode for low risk
 const decision8 = engine.decide(10, null)
-assert.strictEqual(decision8.action, 'ALERT', 'Decision engine: should ALERT in IPS mode for low risk')
+assert.strictEqual(decision8.action, 'ALLOW', 'Decision engine: should ALLOW in IPS mode for low risk')
 
 console.log('✓ All decision engine tests passed!')

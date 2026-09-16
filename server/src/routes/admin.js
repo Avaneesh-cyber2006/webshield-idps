@@ -13,13 +13,16 @@ const {
   setMode,
   getSettings,
   updateDeviceLabel,
-  getDeviceLabels
+  getDeviceLabels,
+  getTrafficEvents,
+  getClientIp
 } = require('../controllers/admin');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.get('/overview', authenticate, requireAdmin, getOverview);
 router.get('/traffic', authenticate, requireAdmin, getTraffic);
 router.get('/security-events', authenticate, requireAdmin, getSecurityEvents);
+router.get('/traffic-events', authenticate, requireAdmin, getTrafficEvents);
 router.get('/blocked-sources', authenticate, requireAdmin, getBlockedSources);
 router.post('/block-source', authenticate, requireAdmin, blockSource);
 router.delete('/block-source/:sourceIp', authenticate, requireAdmin, unblockSource);
@@ -30,5 +33,6 @@ router.post('/mode', authenticate, requireAdmin, setMode);
 router.get('/settings', authenticate, requireAdmin, getSettings);
 router.post('/device-label', authenticate, requireAdmin, updateDeviceLabel);
 router.get('/device-labels', authenticate, requireAdmin, getDeviceLabels);
+router.get('/client-ip', authenticate, getClientIp);
 
 module.exports = router;

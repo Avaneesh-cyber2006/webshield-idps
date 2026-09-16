@@ -5,25 +5,25 @@
 class XSSDetector {
   constructor() {
     this.patterns = [
-      /<script[^>]*>.*?<\/script>/gi,
-      /javascript:/gi,
-      /on\w+\s*=/gi, // onclick=, onerror=, onload=, etc.
-      /<iframe[^>]*>/gi,
-      /<object[^>]*>/gi,
-      /<embed[^>]*>/gi,
-      /<meta[^>]*>/gi,
-      /document\./gi,
-      /window\./gi,
-      /eval\s*\(/gi,
-      /expression\s*\(/gi,
-      /fromCharCode/gi,
+      /<script[^>]*>.*?<\/script>/i,
+      /javascript:/i,
+      /on\w+\s*=/i, // onclick=, onerror=, onload=, etc.
+      /<iframe[^>]*>/i,
+      /<object[^>]*>/i,
+      /<embed[^>]*>/i,
+      /<meta[^>]*>/i,
+      /document\./i,
+      /window\./i,
+      /eval\s*\(/i,
+      /expression\s*\(/i,
+      /fromCharCode/i,
       /&#(\d+);/g,
       /&#x([0-9a-fA-F]+);/g,
-      /%3Cscript/gi,
-      /%3E/gi,
-      /alert\s*\(/gi,
-      /confirm\s*\(/gi,
-      /prompt\s*\(/gi
+      /%3Cscript/i,
+      /%3E/i,
+      /alert\s*\(/i,
+      /confirm\s*\(/i,
+      /prompt\s*\(/i
     ];
   }
 

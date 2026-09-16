@@ -5,22 +5,22 @@
 class SQLInjectionDetector {
   constructor() {
     this.patterns = [
-      /' OR '1'='1/gi,
-      /' OR '1'='1'/gi,
-      /(\s|^)(OR|AND)(\s+)(\d+|'[^']*')(\s*)(=|!=|<>|<|>)(\s*)(\d+|'[^']*')/gi,
-      /UNION(\s+)SELECT/gi,
-      /(\s|^)(DROP|DELETE|INSERT|UPDATE)(\s+)(TABLE|DATABASE)/gi,
-      /(\s|^)(EXEC|EXECUTE)(\s+)/gi,
-      /(\s|^)(--|#|\/\*|\*\/)/g,
-      /(\s|^)(xp_|sp_)/gi,
-      /(\s|^)(WAITFOR|DELAY)(\s+)/gi,
-      /(\s|^)(1=1|1 = 1)/gi,
-      /(\s|^)('\s+OR\s+')/gi,
-      /(\s|^)('\s+AND\s+')/gi,
-      /(\s|^)(admin'|admin"|"or"1"="1)/gi,
-      /(\s|^)(ORDER\s+BY\s+\d+)/gi,
-      /(\s|^)(GROUP\s+BY\s+\d+)/gi,
-      /(\s|^)(HAVING\s+\d+|HAVING\s+'\w+')/gi
+      /' OR '1'='1/i,
+      /' OR '1'='1'/i,
+      /(\s|^)(OR|AND)(\s+)(\d+|'[^']*')(\s*)(=|!=|<>|<|>)(\s*)(\d+|'[^']*')/i,
+      /UNION(\s+)SELECT/i,
+      /(\s|^)(DROP|DELETE|INSERT|UPDATE)(\s+)(TABLE|DATABASE)/i,
+      /(\s|^)(EXEC|EXECUTE)(\s+)/i,
+      /(\s|^)(--|#|\/\*|\*\/)/,
+      /(\s|^)(xp_|sp_)/i,
+      /(\s|^)(WAITFOR|DELAY)(\s+)/i,
+      /(\s|^)(1=1|1 = 1)/i,
+      /(\s|^)('\s+OR\s+')/i,
+      /(\s|^)('\s+AND\s+')/i,
+      /(\s|^)(admin'|admin"|"or"1"="1)/i,
+      /(\s|^)(ORDER\s+BY\s+\d+)/i,
+      /(\s|^)(GROUP\s+BY\s+\d+)/i,
+      /(\s|^)(HAVING\s+\d+|HAVING\s+'\w+')/i
     ];
   }
 

@@ -2,14 +2,27 @@
  * Socket.IO Setup
  * Handles real-time updates for the admin dashboard
  */
+const { verifyToken } = require('../middleware/auth');
+
 function setupSocketIO(io) {
   io.on('connection', (socket) => {
     console.log('Client connected:', socket.id);
 
-    // Join admin room for security updates
-    socket.on('join-admin', () => {
-      socket.join('admin');
-      console.log('Client joined admin room:', socket.id);
+    // Join admin room with authentication
+    socket.on('join-admin', (token) => {
+      try {
+        const decoded = verifyToken(token);
+        if (decoded.role !== 'admin') {
+          socket.emit('error', { message: 'Unauthorized: Admin access required' });
+          return;
+        }
+        socket.join('admin');
+        console.log('Admin client joined admin room:', socket.id);
+        socket.emit('joined-admin', { success: true });
+      } catch (error) {
+        console.error('Socket auth error:', error);
+        socket.emit('error', { message: 'Authentication failed' });
+      }
     });
 
     // Leave admin room

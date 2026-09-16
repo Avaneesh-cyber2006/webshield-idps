@@ -42,7 +42,7 @@ app.use((req, res, next) => {
 let idpsMiddleware = (req, res, next) => next();
 
 // API routes (protected by IDPS)
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', idpsMiddleware, authRoutes);
 app.use('/api/demo', idpsMiddleware, demoRoutes);
 app.use('/api/admin', idpsMiddleware, adminRoutes);
 app.use('/api/test-lab', idpsMiddleware, testLabRoutes);

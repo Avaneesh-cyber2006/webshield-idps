@@ -41,9 +41,17 @@ export const SocketProvider = ({ children }) => {
     }
   }, [])
 
-  const joinAdminRoom = () => {
+  const joinAdminRoom = (token) => {
     if (socket) {
-      socket.emit('join-admin')
+      socket.emit('join-admin', token)
+      socket.on('joined-admin', (data) => {
+        if (data.success) {
+          console.log('Successfully joined admin room')
+        }
+      })
+      socket.on('error', (error) => {
+        console.error('Socket error:', error.message)
+      })
     }
   }
 

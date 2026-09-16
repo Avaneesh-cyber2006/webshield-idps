@@ -20,20 +20,57 @@ function normalizeIp(ip) {
 
 /**
  * Get client IP from request, handling various proxy scenarios
+ * Only trusts X-Forwarded-For when explicitly configured (not implemented yet)
  */
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  const realIp = req.headers['x-real-ip'];
+  const trustedProxy = process.env.TRUSTED_PROXY; // Future: set this if using reverse proxy
+
   const remoteAddr = req.socket.remoteAddress;
 
-  const ip = forwarded
-    ? forwarded.split(',')[0].trim()
-    : realIp || remoteAddr;
+  // Only trust forwarded headers if explicitly configured
+  if (trustedProxy) {
+    const forwarded = req.headers['x-forwarded-for'];
+    const realIp = req.headers['x-real-ip'];
+    const ip = forwarded
+      ? forwarded.split(',')[0].trim()
+      : realIp || remoteAddr;
+    return normalizeIp(ip);
+  }
 
-  return normalizeIp(ip);
+  // Default: use direct socket address, ignore forwarded headers
+  return normalizeIp(remoteAddr);
+}
+
+/**
+ * Validate that an IP address is from the local network
+ */
+function isLocalNetwork(ip) {
+  if (!ip || ip === 'unknown') return false;
+
+  // Check for localhost
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+
+  // Check for private IP ranges
+  const parts = ip.split('.');
+  if (parts.length !== 4) return false;
+
+  const first = parseInt(parts[0], 10);
+  const second = parseInt(parts[1], 10);
+
+  // 10.0.0.0/8
+  if (first === 10) return true;
+
+  // 172.16.0.0/12
+  if (first === 172 && second >= 16 && second <= 31) return true;
+
+  // 192.168.0.0/16
+  if (first === 192 && second === 168) return true;
+
+  return false;
 }
 
 module.exports = {
   normalizeIp,
-  getClientIp
+  getClientIp,
+  isLocalNetwork
 };

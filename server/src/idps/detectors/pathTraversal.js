@@ -5,17 +5,17 @@
 class PathTraversalDetector {
   constructor() {
     this.patterns = [
-      /\.\.\//g,
-      /\.\.\\/g,
-      /%2e%2e%2f/gi,
-      /%2e%2e\\/gi,
-      /%252e%252e%252f/gi,
-      /..%5c/gi,
-      /%5c%5c/gi,
-      /\/etc\//gi,
-      /\/windows\//gi,
-      /c:\\/gi,
-      /file:\/\//gi,
+      /\.\.\//,
+      /\.\.\\/,
+      /%2e%2e%2f/i,
+      /%2e%2e\\/i,
+      /%252e%252e%252f/i,
+      /..%5c/i,
+      /%5c%5c/i,
+      /\/etc\//i,
+      /\/windows\//i,
+      /c:\\/i,
+      /file:\/\//i,
       /~\/+/g
     ];
   }
