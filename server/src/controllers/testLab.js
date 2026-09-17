@@ -726,6 +726,7 @@ async function getTestConfig(req, res) {
                test.id === 'path_traversal' ? { query: '../../../etc/passwd' } :
                test.id === 'invalid_auth' ? { email: 'invalid@test.com', password: 'wrongpassword' } :
                test.id === 'normal_login' ? { email: 'user@webshield.local', password: 'user123' } :
+               test.id === 'repeated_login_failure' ? { email: 'test@wrong.com', password: 'wrongpassword123' } :
                test.id === 'oversized_payload' ? { name: 'Test', email: 'test@test.com', message: 'A'.repeat(2000000) } :
                null,
       headers: test.id === 'suspicious_user_agent' ? { 'User-Agent': '' } :
@@ -861,6 +862,19 @@ async function submitBatchTestResults(req, res) {
       const test = TESTS.find(t => t.id === testId);
       if (!test) {
         console.error(`Test not found: ${testId}`);
+        // Record as execution error instead of silently skipping
+        processedResults.push({
+          testId: testId,
+          testName: 'Unknown Test',
+          expectedType: 'UNKNOWN',
+          expectedAction: 'UNKNOWN',
+          actualType: 'UNKNOWN',
+          actualAction: 'TEST_NOT_FOUND',
+          riskScore: 0,
+          passed: false,
+          requestId: requestId || null,
+          evidence: { testNotFound: true, testId }
+        });
         continue;
       }
 

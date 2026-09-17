@@ -106,7 +106,10 @@ async function testIPSpoofingPrevention() {
     console.log('✓ Normal request without spoofing headers allowed');
 
     // Test 4: Explicit TRUSTED_PROXY=false test
-    // Ensure that even with various forwarded headers, socket IP is used
+    // Set environment variable explicitly and verify forwarded headers are ignored
+    const originalTrustedProxy = process.env.TRUSTED_PROXY;
+    process.env.TRUSTED_PROXY = 'false';
+
     const explicitSpoofResponse = await request(baseURL)
       .get('/api/demo/search?query=normal')
       .set('User-Agent', 'Mozilla/5.0')
@@ -132,6 +135,9 @@ async function testIPSpoofingPrevention() {
     }
 
     console.log('✓ TRUSTED_PROXY=false: all forwarded headers ignored, socket IP used exclusively');
+
+    // Restore original value
+    process.env.TRUSTED_PROXY = originalTrustedProxy;
 
   } finally {
     await cleanupTestServer(server);

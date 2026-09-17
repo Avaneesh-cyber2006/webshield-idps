@@ -42,24 +42,47 @@ class PreventionLayer {
         ? new Date(Date.now() + durationMs)
         : null;
 
-      await prisma.blockedSource.upsert({
-        where: { sourceIp },
-        update: {
-          reason,
-          blockedAt: new Date(),
-          expiresAt,
-          active: true,
-          testRunId: testRunId || null  // Update ownership if provided
-        },
-        create: {
-          sourceIp,
-          reason,
-          blockedAt: new Date(),
-          expiresAt,
-          active: true,
-          testRunId: testRunId || null  // Track ownership if provided
-        }
+      // Check if a block already exists
+      const existingBlock = await prisma.blockedSource.findUnique({
+        where: { sourceIp }
       });
+
+      if (existingBlock) {
+        // If this is a manual block (no testRunId), never overwrite it
+        if (!existingBlock.testRunId) {
+          console.log(`Manual block exists for ${sourceIp}, not overwriting with test-generated block`);
+          return true; // Consider it blocked (preserving manual block)
+        }
+
+        // If this block belongs to a different test run, don't overwrite it
+        if (existingBlock.testRunId !== testRunId) {
+          console.log(`Block for ${sourceIp} belongs to different test run ${existingBlock.testRunId}, not overwriting`);
+          return true; // Consider it blocked (preserving other run's block)
+        }
+
+        // If this block belongs to the same test run, update it
+        await prisma.blockedSource.update({
+          where: { sourceIp },
+          data: {
+            reason,
+            blockedAt: new Date(),
+            expiresAt,
+            active: true
+          }
+        });
+      } else {
+        // No existing block, create a new one
+        await prisma.blockedSource.create({
+          data: {
+            sourceIp,
+            reason,
+            blockedAt: new Date(),
+            expiresAt,
+            active: true,
+            testRunId: testRunId || null  // Track ownership if provided
+          }
+        });
+      }
 
       return true;
     } catch (error) {

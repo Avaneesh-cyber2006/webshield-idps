@@ -46,10 +46,12 @@ const TestLab = () => {
     setRunning(true)
     setShowReport(false)
 
+    let testRunId = null
+
     try {
       // Create TestRun BEFORE executing any test requests
       const createRunResponse = await api.post('/test-lab/create-run')
-      const testRunId = createRunResponse.data.testRun.id
+      testRunId = createRunResponse.data.testRun.id
 
       // Fetch test configurations for browser-originated execution
       const configResponse = await api.get('/test-lab/config')
@@ -72,9 +74,29 @@ const TestLab = () => {
       setCurrentTestRun(submitResponse.data.testRun)
       setShowReport(true)
       fetchTestRuns()
+
+      // Perform cleanup to remove any lab-created temporary blocks
+      if (testRunId) {
+        try {
+          await api.post(`/test-lab/cleanup/${testRunId}`)
+          console.log('Cleanup completed successfully')
+        } catch (cleanupError) {
+          console.error('Cleanup failed (non-critical):', cleanupError)
+          // Don't fail the entire test run if cleanup fails
+        }
+      }
     } catch (error) {
       console.error('Test suite failed:', error)
       alert('Test suite failed: ' + (error.response?.data?.message || error.message))
+      
+      // Attempt cleanup even on failure
+      if (testRunId) {
+        try {
+          await api.post(`/test-lab/cleanup/${testRunId}`)
+        } catch (cleanupError) {
+          console.error('Cleanup after failure failed:', cleanupError)
+        }
+      }
     } finally {
       setRunning(false)
     }

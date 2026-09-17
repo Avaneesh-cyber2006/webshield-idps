@@ -409,10 +409,17 @@ async function testTestLabEndToEnd() {
     });
 
     if (!blockedSource) {
-      console.log('  Note: Block may not have testRunId ownership (legacy behavior)');
-    } else {
-      console.log('✓ Block created with testRun ownership');
+      throw new Error('Block was not created with testRun ownership');
     }
+
+    console.log('✓ Block created with testRun ownership');
+
+    // Verify the block is active
+    if (!blockedSource.active) {
+      throw new Error('Block is not active');
+    }
+
+    console.log('✓ Block is active');
 
     console.log('\n3. Testing cleanup removes lab-owned blocks...');
     const ipsCleanupResponse = await request(baseURL)

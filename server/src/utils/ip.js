@@ -19,11 +19,12 @@ function normalizeIp(ip) {
 }
 
 /**
- * Get client IP from request, handling various proxy scenarios
- * Only trusts X-Forwarded-For when explicitly configured (not implemented yet)
+ * Get client IP from request
+ * For direct LAN deployment, use socket remote address exclusively
+ * Only trust X-Forwarded-For when TRUSTED_PROXY is explicitly set to a truthy value
  */
 function getClientIp(req) {
-  const trustedProxy = process.env.TRUSTED_PROXY; // Future: set this if using reverse proxy
+  const trustedProxy = process.env.TRUSTED_PROXY === 'true';
 
   const remoteAddr = req.socket.remoteAddress;
 
@@ -37,7 +38,7 @@ function getClientIp(req) {
     return normalizeIp(ip);
   }
 
-  // Default: use direct socket address, ignore forwarded headers
+  // Default: use direct socket address, ignore all forwarded headers
   return normalizeIp(remoteAddr);
 }
 
