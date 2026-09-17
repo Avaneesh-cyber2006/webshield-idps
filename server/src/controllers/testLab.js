@@ -748,11 +748,58 @@ async function getTestConfig(req, res) {
 }
 
 /**
+ * Create a new TestRun with unique identifier
+ */
+async function createTestRun(req, res) {
+  try {
+    // Get current system mode
+    const modeSetting = await prisma.systemSetting.findUnique({
+      where: { key: 'idps_mode' }
+    });
+    const currentMode = modeSetting ? modeSetting.value : 'IDS';
+
+    // Generate unique test-run identifier
+    const runId = `RUN-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+    const testRun = await prisma.testRun.create({
+      data: {
+        mode: currentMode,
+        totalTests: 0, // Will be updated when tests are submitted
+        methodology: 'Browser-originated HTTP requests to protected WebShield endpoints. Each request was executed from the client browser, capturing the actual HTTP status code, request ID from X-Request-ID header, and correlating with database security and traffic events. Classification and prevention actions are derived from genuine observations, not fabricated values. Only samples with verified classifications are included in confusion matrix calculations.'
+      }
+    });
+
+    res.json({
+      success: true,
+      testRun: {
+        id: testRun.id,
+        runId: runId,
+        mode: testRun.mode,
+        createdAt: testRun.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Create test run error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create test run'
+    });
+  }
+}
+
+/**
  * Submit batch test results from browser-originated tests
  */
 async function submitBatchTestResults(req, res) {
   try {
-    const { results } = req.body;
+    const { testRunId, results } = req.body;
+
+    if (!testRunId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Test run ID is required'
+      });
+    }
 
     if (!Array.isArray(results) || results.length === 0) {
       return res.status(400).json({
@@ -761,24 +808,53 @@ async function submitBatchTestResults(req, res) {
       });
     }
 
-    // Create test run with actual system mode
-    const modeSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'idps_mode' }
+    // Verify test run exists and is in CREATED or RUNNING state
+    const testRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
     });
-    const currentMode = modeSetting ? modeSetting.value : 'IDS';
 
-    const testRun = await prisma.testRun.create({
+    if (!testRun) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test run not found'
+      });
+    }
+
+    if (testRun.status !== 'CREATED' && testRun.status !== 'RUNNING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Test run is not in a valid state for submission'
+      });
+    }
+
+    // Update test run status to RUNNING
+    await prisma.testRun.update({
+      where: { id: testRunId },
       data: {
-        mode: currentMode,
-        totalTests: results.length,
-        methodology: 'Browser-originated HTTP requests to protected WebShield endpoints. Each request was executed from the client browser, capturing the actual HTTP status code, request ID from X-Request-ID header, and correlating with database security and traffic events. Classification and prevention actions are derived from genuine observations, not fabricated values. Only samples with verified classifications are included in confusion matrix calculations.'
+        status: 'RUNNING',
+        totalTests: results.length
       }
     });
+
+    // Track processed request IDs to prevent replay
+    const processedRequestIds = new Set();
 
     // Process each result
     const processedResults = [];
     for (const result of results) {
       const { testId, requestId, httpStatus, success, error } = result;
+
+      // Reject duplicate/replayed request IDs
+      if (!requestId) {
+        console.error(`No request ID provided for test ${testId}`);
+        continue;
+      }
+
+      if (processedRequestIds.has(requestId)) {
+        console.error(`Duplicate request ID rejected: ${requestId}`);
+        continue;
+      }
+      processedRequestIds.add(requestId);
 
       const test = TESTS.find(t => t.id === testId);
       if (!test) {
@@ -806,25 +882,36 @@ async function submitBatchTestResults(req, res) {
       } else {
         // Look up traffic event first (required for validation)
         const trafficEvent = await prisma.trafficEvent.findFirst({
-          where: { requestId: requestId },
+          where: {
+            requestId: requestId,
+            runId: testRunId  // Must belong to this test run
+          },
           orderBy: { createdAt: 'desc' }
         });
 
         if (!trafficEvent) {
-          // No traffic event - cannot validate
+          // No traffic event or not associated with this run - cannot validate
           actualType = 'UNKNOWN';
           actualAction = 'NO_TRAFFIC_EVENT';
-          evidence = { noTrafficEvent: true, requestId };
+          evidence = { noTrafficEvent: true, requestId, runId: testRunId };
         } else {
           // Validate: HTTP status matches
           if (trafficEvent.status !== httpStatus) {
             actualType = 'UNKNOWN';
             actualAction = 'STATUS_MISMATCH';
             evidence = { statusMismatch: true, expectedStatus: httpStatus, actualStatus: trafficEvent.status };
+          } else if (!trafficEvent.sourceIp) {
+            // No source IP recorded - cannot validate
+            actualType = 'UNKNOWN';
+            actualAction = 'NO_SOURCE_IP';
+            evidence = { noSourceIp: true, requestId };
           } else {
-            // Look up security event
+            // Look up security event (must belong to this test run)
             const securityEvent = await prisma.securityEvent.findFirst({
-              where: { requestId: requestId },
+              where: {
+                requestId: requestId,
+                runId: testRunId  // Must belong to this test run
+              },
               orderBy: { createdAt: 'desc' }
             });
 
@@ -871,9 +958,15 @@ async function submitBatchTestResults(req, res) {
         }
       }
 
+      // Determine expected action based on current mode
+      let expectedAction = test.expectedAction;
+      if (test.expectedType === 'ATTACK' && testRun.mode === 'IPS') {
+        expectedAction = 'BLOCK';  // In IPS mode, attacks should be blocked
+      }
+
       // Determine if test passed
       const typeMatch = actualType === test.expectedType;
-      const actionMatch = actualAction === test.expectedAction;
+      const actionMatch = actualAction === expectedAction;
       const passed = typeMatch && actionMatch && !error;
 
       // Create test result
@@ -883,7 +976,7 @@ async function submitBatchTestResults(req, res) {
           testId: test.id,
           testName: test.name,
           expectedType: test.expectedType,
-          expectedAction: test.expectedAction,
+          expectedAction: expectedAction,  // Use mode-aware expected action
           actualType,
           actualAction,
           riskScore,
@@ -897,7 +990,7 @@ async function submitBatchTestResults(req, res) {
         testId: test.id,
         testName: test.name,
         expectedType: test.expectedType,
-        expectedAction: test.expectedAction,
+        expectedAction: expectedAction,  // Use mode-aware expected action
         actualType,
         actualAction,
         riskScore,
@@ -910,10 +1003,12 @@ async function submitBatchTestResults(req, res) {
     // Calculate metrics
     const metrics = calculateMetrics(processedResults);
 
-    // Update test run with metrics
+    // Update test run with metrics and mark as COMPLETED
     await prisma.testRun.update({
       where: { id: testRun.id },
       data: {
+        status: 'COMPLETED',
+        completedAt: new Date(),
         passed: metrics.passed,
         failed: metrics.failed,
         truePositive: metrics.truePositive,
@@ -1040,17 +1135,14 @@ async function cleanupTestRun(req, res) {
       });
     }
 
-    // Find all traffic events for this test run
+    // Find all traffic events specifically associated with this test run via runId
     const trafficEvents = await prisma.trafficEvent.findMany({
       where: {
-        requestId: {
-          startsWith: 'REQ-'
-        }
+        runId: testRunId
       }
     });
 
-    // Get unique source IPs from this test run's events
-    // Note: This is a simple approach - in production you'd want to associate requests with test runs
+    // Get unique source IPs from this test run's events only
     const sourceIps = [...new Set(trafficEvents.map(e => e.sourceIp))];
 
     // Clean up temporary blocks for these IPs (only those created during the test window)
@@ -1076,6 +1168,14 @@ async function cleanupTestRun(req, res) {
       }
     }
 
+    // Update test run status to CLEANED_UP
+    await prisma.testRun.update({
+      where: { id: testRunId },
+      data: {
+        status: 'CLEANED_UP'
+      }
+    });
+
     res.json({
       success: true,
       message: `Cleaned up ${cleanedCount} temporary blocks`,
@@ -1097,6 +1197,7 @@ module.exports = {
   getTestRuns,
   getTestRun,
   getTestConfig,
+  createTestRun,
   submitBatchTestResults,
   cleanupTestRun
 };

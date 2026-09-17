@@ -33,11 +33,13 @@ class IDPSInspector {
   async inspect(req, res, next) {
     const requestId = `REQ-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
     const sourceIp = getClientIp(req);
+    const runId = req.headers['x-test-run-id'] || null; // Associate with TestRun if provided
 
     // Store request ID for later use
     req.idps = {
       requestId,
       sourceIp,
+      runId,
       startTime: Date.now()
     };
 
@@ -222,6 +224,7 @@ class IDPSInspector {
       const event = await prisma.securityEvent.create({
         data: {
           requestId: req.idps.requestId,
+          runId: req.idps.runId,  // Associate with TestRun for safe cleanup
           sourceIp: req.idps.sourceIp,
           method: req.method,
           path: req.path,
@@ -256,6 +259,7 @@ class IDPSInspector {
       await prisma.trafficEvent.create({
         data: {
           requestId: req.idps.requestId,
+          runId: req.idps.runId,  // Associate with TestRun for safe cleanup
           sourceIp: req.idps.sourceIp,
           method: req.method,
           path: req.path,

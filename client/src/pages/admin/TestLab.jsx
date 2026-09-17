@@ -47,6 +47,10 @@ const TestLab = () => {
     setShowReport(false)
 
     try {
+      // Create TestRun BEFORE executing any test requests
+      const createRunResponse = await api.post('/test-lab/create-run')
+      const testRunId = createRunResponse.data.testRun.id
+
       // Fetch test configurations for browser-originated execution
       const configResponse = await api.get('/test-lab/config')
       const testConfigs = configResponse.data.configs
@@ -54,12 +58,14 @@ const TestLab = () => {
       // Execute tests from the browser
       const results = []
       for (const config of testConfigs) {
-        const result = await executeBrowserTest(config)
-        results.push(result)
+        const testResults = await executeBrowserTest(config, testRunId)
+        // Append all individual observations (preserving repeated tests)
+        results.push(...testResults)
       }
 
-      // Submit batch results to server
+      // Submit batch results to server with testRunId
       const submitResponse = await api.post('/test-lab/submit', {
+        testRunId,
         results
       })
 
@@ -74,18 +80,15 @@ const TestLab = () => {
     }
   }
 
-  const executeBrowserTest = async (config) => {
+  const executeBrowserTest = async (config, testRunId) => {
     const { testId, endpoint, method, payload, headers, repeatCount } = config
     const results = []
-
-    // Save admin cookie before authentication tests
-    const originalCookie = document.cookie
 
     for (let i = 0; i < repeatCount; i++) {
       try {
         const url = endpoint  // Backend now returns complete API path
 
-        // For authentication tests, don't include credentials to preserve admin session
+        // For authentication tests, omit credentials to preserve admin session
         const isAuthTest = endpoint.includes('/auth/login')
         const useCredentials = !isAuthTest
 
@@ -96,18 +99,20 @@ const TestLab = () => {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'X-Test-Run-ID': testRunId,  // Associate request with TestRun
               ...headers
             },
-            credentials: useCredentials ? 'include' : 'same-origin'
+            credentials: useCredentials ? 'include' : 'omit'
           })
         } else {
           response = await fetch(url, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
+              'X-Test-Run-ID': testRunId,  // Associate request with TestRun
               ...headers
             },
-            credentials: useCredentials ? 'include' : 'same-origin',
+            credentials: useCredentials ? 'include' : 'omit',
             body: JSON.stringify(payload)
           })
         }
@@ -115,12 +120,13 @@ const TestLab = () => {
         const requestId = response.headers.get('X-Request-ID')
         const data = await response.json()
 
+        // Return individual observation for each request
         results.push({
           testId,
           httpStatus: response.status,
           requestId,
           success: response.ok,
-          data
+          error: null
         })
       } catch (error) {
         results.push({
@@ -133,20 +139,8 @@ const TestLab = () => {
       }
     }
 
-    // Restore admin cookie after authentication tests
-    if (endpoint.includes('/auth/login')) {
-      document.cookie = originalCookie
-    }
-
-    // Return the last result (or error if all failed)
-    const lastResult = results[results.length - 1]
-    return {
-      testId,
-      httpStatus: lastResult.httpStatus,
-      requestId: lastResult.requestId,
-      success: lastResult.success,
-      error: lastResult.error
-    }
+    // Return ALL observations (preserving repeated requests)
+    return results
   }
 
   const getExpectedBadge = (type) => {
