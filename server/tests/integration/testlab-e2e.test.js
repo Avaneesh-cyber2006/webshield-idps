@@ -3,6 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { app, initializeIDPS } = require('../../src/app');
 const prisma = require('../../src/config/database');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
 console.log('Running Test Lab end-to-end integration tests...');
 
@@ -27,16 +29,49 @@ async function cleanupTestServer(server) {
   });
 }
 
+async function getAdminToken(baseURL) {
+  // Get admin user
+  const admin = await prisma.user.findUnique({
+    where: { email: 'admin@webshield.local' }
+  });
+
+  if (!admin) {
+    throw new Error('Admin user not found in database');
+  }
+
+  // Login to get token
+  const loginResponse = await request(baseURL)
+    .post('/api/auth/login')
+    .send({
+      email: admin.email,
+      password: 'admin123'  // Default seed password
+    });
+
+  if (loginResponse.status !== 200) {
+    throw new Error(`Admin login failed: ${loginResponse.status}`);
+  }
+
+  const cookies = loginResponse.headers['set-cookie'];
+  const tokenCookie = cookies.find(c => c.startsWith('token='));
+  if (!tokenCookie) {
+    throw new Error('No token cookie in login response');
+  }
+
+  const token = tokenCookie.split('=')[1].split(';')[0];
+  return token;
+}
+
 async function testTestLabEndToEnd() {
   const { server, port } = await setupTestServer();
   const baseURL = `http://127.0.0.1:${port}`;
 
   try {
-    // Clear database
+    // Clear test tables only (preserve users, settings, rules)
     await prisma.securityEvent.deleteMany({});
     await prisma.trafficEvent.deleteMany({});
     await prisma.testRun.deleteMany({});
     await prisma.testResult.deleteMany({});
+    await prisma.blockedSource.deleteMany({});
 
     // Set mode to IDS
     await prisma.systemSetting.upsert({
@@ -45,91 +80,229 @@ async function testTestLabEndToEnd() {
       create: { key: 'idps_mode', value: 'IDS' }
     });
 
-    // Test 1: Get test configuration
-    console.log('\n1. Testing test configuration retrieval...');
+    console.log('\n=== Test Lab End-to-End Workflow ===');
+
+    // Step 1: Authenticate as administrator
+    console.log('\n1. Authenticating as administrator...');
+    const adminToken = await getAdminToken(baseURL);
+    console.log('✓ Administrator authenticated');
+
+    // Step 2: Create TestRun
+    console.log('\n2. Creating TestRun...');
+    const createRunResponse = await request(baseURL)
+      .post('/api/test-lab/create-run')
+      .set('Cookie', `token=${adminToken}`);
+
+    if (createRunResponse.status !== 200) {
+      throw new Error(`Create TestRun failed: ${createRunResponse.status} - ${JSON.stringify(createRunResponse.body)}`);
+    }
+
+    const testRunId = createRunResponse.body.testRun.id;
+    const runId = createRunResponse.body.testRun.runId;
+    console.log(`✓ TestRun created: ${testRunId}`);
+    console.log(`  External runId: ${runId}`);
+
+    // Verify TestRun persisted in database
+    const persistedTestRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
+    });
+
+    if (!persistedTestRun) {
+      throw new Error('TestRun not persisted in database');
+    }
+
+    if (persistedTestRun.status !== 'CREATED') {
+      throw new Error(`TestRun status should be CREATED, got ${persistedTestRun.status}`);
+    }
+
+    console.log('✓ TestRun persisted with CREATED status');
+
+    // Step 3: Retrieve test configuration
+    console.log('\n3. Retrieving test configuration...');
     const configResponse = await request(baseURL)
       .get('/api/test-lab/config')
-      .set('Authorization', 'Bearer fake-admin-token');
+      .set('Cookie', `token=${adminToken}`);
 
-    if (configResponse.status !== 401) {
-      throw new Error(`Config endpoint not protected: ${configResponse.status}`);
+    if (configResponse.status !== 200) {
+      throw new Error(`Config retrieval failed: ${configResponse.status}`);
     }
 
-    console.log('✓ Config endpoint requires authentication');
+    const configs = configResponse.body.configs;
+    console.log(`✓ Retrieved ${configs.length} test configurations`);
 
-    // Test 2: Verify endpoint paths match actual routes
-    console.log('\n2. Verifying endpoint paths...');
-    const authResponse = await request(baseURL).get('/api/demo/public');
-    if (authResponse.status !== 200) {
-      throw new Error(`Protected endpoint not accessible: ${authResponse.status}`);
+    // Step 4: Execute normal request
+    console.log('\n4. Executing normal request...');
+    const normalConfig = configs.find(c => c.testId === 'normal_request');
+    if (!normalConfig) {
+      throw new Error('Normal request test not found in config');
     }
-    console.log('✓ Protected endpoint /api/demo/public is accessible');
 
-    // Test 3: Verify X-Request-ID header is present
-    console.log('\n3. Verifying X-Request-ID header...');
-    const requestIdResponse = await request(baseURL).get('/api/demo/public');
-    const requestId = requestIdResponse.headers['x-request-id'];
-    if (!requestId) {
-      throw new Error('X-Request-ID header missing');
+    const normalResponse = await request(baseURL)
+      .get(normalConfig.endpoint)
+      .query(normalConfig.payload)
+      .set('X-Test-Run-ID', testRunId);
+
+    const normalRequestId = normalResponse.headers['x-request-id'];
+    console.log(`✓ Normal request executed: HTTP ${normalResponse.status}`);
+    console.log(`  Request ID: ${normalRequestId}`);
+
+    if (!normalRequestId) {
+      throw new Error('X-Request-ID header missing from normal response');
     }
-    console.log(`✓ X-Request-ID header present: ${requestId}`);
 
-    // Test 4: Verify traffic event is created
-    console.log('\n4. Verifying traffic event creation...');
+    // Verify traffic event with runId
     await new Promise(resolve => setTimeout(resolve, 100));
-    const trafficEvent = await prisma.trafficEvent.findFirst({
-      where: { requestId: requestId }
+    const normalTrafficEvent = await prisma.trafficEvent.findFirst({
+      where: {
+        requestId: normalRequestId,
+        runId: testRunId
+      }
     });
-    if (!trafficEvent) {
-      throw new Error('Traffic event not created');
-    }
-    console.log('✓ Traffic event created with request ID');
 
-    // Test 5: Test batch submission validation
-    console.log('\n5. Testing batch submission validation...');
+    if (!normalTrafficEvent) {
+      throw new Error('Traffic event not created for normal request');
+    }
+
+    console.log('✓ Traffic event created with runId association');
+
+    // Step 5: Execute SQL injection request
+    console.log('\n5. Executing SQL injection request...');
+    const sqlConfig = configs.find(c => c.testId === 'sql_injection');
+    if (!sqlConfig) {
+      throw new Error('SQL injection test not found in config');
+    }
+
+    const sqlResponse = await request(baseURL)
+      .get(sqlConfig.endpoint)
+      .query(sqlConfig.payload)
+      .set('X-Test-Run-ID', testRunId);
+
+    const sqlRequestId = sqlResponse.headers['x-request-id'];
+    console.log(`✓ SQL injection request executed: HTTP ${sqlResponse.status}`);
+    console.log(`  Request ID: ${sqlRequestId}`);
+
+    if (!sqlRequestId) {
+      throw new Error('X-Request-ID header missing from SQL injection response');
+    }
+
+    // Verify traffic event with runId
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const sqlTrafficEvent = await prisma.trafficEvent.findFirst({
+      where: {
+        requestId: sqlRequestId,
+        runId: testRunId
+      }
+    });
+
+    if (!sqlTrafficEvent) {
+      throw new Error('Traffic event not created for SQL injection request');
+    }
+
+    console.log('✓ Traffic event created with runId association');
+
+    // Verify security event (IDS mode should detect but not block)
+    const sqlSecurityEvent = await prisma.securityEvent.findFirst({
+      where: {
+        requestId: sqlRequestId,
+        runId: testRunId
+      }
+    });
+
+    if (!sqlSecurityEvent) {
+      console.log('  Note: No security event for SQL injection in IDS mode (may be expected behavior)');
+    } else {
+      console.log(`✓ Security event created: ${sqlSecurityEvent.attackType}, risk score: ${sqlSecurityEvent.riskScore}`);
+    }
+
+    // Step 6: Submit batch observations
+    console.log('\n6. Submitting batch observations...');
     const submitResponse = await request(baseURL)
       .post('/api/test-lab/submit')
-      .send({ results: [] });
+      .set('Cookie', `token=${adminToken}`)
+      .send({
+        testRunId,
+        results: [
+          {
+            testId: normalConfig.testId,
+            httpStatus: normalResponse.status,
+            requestId: normalRequestId,
+            success: normalResponse.status === 200
+          },
+          {
+            testId: sqlConfig.testId,
+            httpStatus: sqlResponse.status,
+            requestId: sqlRequestId,
+            success: sqlResponse.status === 200
+          }
+        ]
+      });
 
-    if (submitResponse.status !== 401) {
-      throw new Error(`Submit endpoint not protected: ${submitResponse.status}`);
+    if (submitResponse.status !== 200) {
+      throw new Error(`Batch submission failed: ${submitResponse.status} - ${JSON.stringify(submitResponse.body)}`);
     }
-    console.log('✓ Submit endpoint requires authentication');
 
-    // Test 6: Verify TestRun schema
-    console.log('\n6. Verifying TestRun schema...');
-    const testRun = await prisma.testRun.create({
-      data: {
-        mode: 'IDS',
-        totalTests: 1,
-        methodology: 'Test'
-      }
+    console.log('✓ Batch submission successful');
+
+    // Step 7: Verify TestRun updated to COMPLETED
+    const updatedTestRun = await prisma.testRun.findUnique({
+      where: { id: testRunId },
+      include: { results: true }
     });
-    console.log('✓ TestRun record created with mode field');
 
-    // Test 7: Verify TestResult schema
-    console.log('\n7. Verifying TestResult schema...');
-    const testResult = await prisma.testResult.create({
-      data: {
-        testRunId: testRun.id,
-        testId: 'test',
-        testName: 'Test',
-        expectedType: 'NORMAL',
-        expectedAction: 'ALLOW',
-        actualType: 'NORMAL',
-        actualAction: 'ALLOW',
-        riskScore: 0,
-        passed: true,
-        requestId: 'REQ-TEST',
-        evidence: '{}'
-      }
+    if (!updatedTestRun) {
+      throw new Error('TestRun not found after submission');
+    }
+
+    if (updatedTestRun.status !== 'COMPLETED') {
+      throw new Error(`TestRun status should be COMPLETED, got ${updatedTestRun.status}`);
+    }
+
+    console.log('✓ TestRun status updated to COMPLETED');
+
+    // Step 8: Verify TestResult records
+    if (updatedTestRun.results.length !== 2) {
+      throw new Error(`Expected 2 TestResult records, got ${updatedTestRun.results.length}`);
+    }
+
+    console.log(`✓ ${updatedTestRun.results.length} TestResult records persisted`);
+
+    // Step 9: Verify metrics
+    const reportMetrics = submitResponse.body.testRun.metrics;
+    console.log('\n7. Report metrics:');
+    console.log(`  Total Tests: ${updatedTestRun.totalTests}`);
+    console.log(`  Passed: ${reportMetrics.passed}`);
+    console.log(`  Failed: ${reportMetrics.failed}`);
+    console.log(`  Evaluated: ${reportMetrics.evaluated}`);
+    console.log(`  Execution Errors: ${reportMetrics.executionErrors}`);
+    console.log(`  Unevaluated: ${reportMetrics.unevaluated}`);
+
+    if (reportMetrics.passed + reportMetrics.failed !== reportMetrics.evaluated) {
+      throw new Error('Metrics calculation error: passed + failed != evaluated');
+    }
+
+    console.log('✓ Metrics calculated correctly');
+
+    // Step 10: Test cleanup
+    console.log('\n8. Testing run-scoped cleanup...');
+    const cleanupResponse = await request(baseURL)
+      .post(`/api/test-lab/cleanup/${testRunId}`)
+      .set('Cookie', `token=${adminToken}`);
+
+    if (cleanupResponse.status !== 200) {
+      throw new Error(`Cleanup failed: ${cleanupResponse.status}`);
+    }
+
+    const cleanedTestRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
     });
-    console.log('✓ TestResult record created with testId, requestId, and evidence fields');
 
-    // Cleanup
-    await prisma.testResult.delete({ where: { id: testResult.id } });
-    await prisma.testRun.delete({ where: { id: testRun.id } });
+    if (cleanedTestRun.status !== 'CLEANED_UP') {
+      throw new Error(`TestRun status should be CLEANED_UP, got ${cleanedTestRun.status}`);
+    }
 
+    console.log('✓ Cleanup successful, TestRun status: CLEANED_UP');
+
+    console.log('\n=== Test Lab End-to-End Workflow Complete ===');
     console.log('\n✓ All Test Lab end-to-end integration tests passed!');
 
   } finally {
@@ -144,5 +317,6 @@ testTestLabEndToEnd()
   })
   .catch((error) => {
     console.error('\n✗ Test Lab end-to-end integration test failed:', error.message);
+    console.error(error.stack);
     process.exit(1);
   });

@@ -105,6 +105,34 @@ async function testIPSpoofingPrevention() {
 
     console.log('✓ Normal request without spoofing headers allowed');
 
+    // Test 4: Explicit TRUSTED_PROXY=false test
+    // Ensure that even with various forwarded headers, socket IP is used
+    const explicitSpoofResponse = await request(baseURL)
+      .get('/api/demo/search?query=normal')
+      .set('User-Agent', 'Mozilla/5.0')
+      .set('X-Forwarded-For', '1.2.3.4')
+      .set('X-Real-IP', '5.6.7.8')
+      .set('X-Forwarded-Host', 'evil.com');
+
+    if (explicitSpoofResponse.status === 403) {
+      throw new Error('Normal request with multiple spoofed headers was blocked');
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const explicitTrafficEvent = await prisma.trafficEvent.findFirst({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!explicitTrafficEvent) {
+      throw new Error('No traffic event for explicit spoofed header test');
+    }
+
+    if (explicitTrafficEvent.sourceIp !== '127.0.0.1') {
+      throw new Error(`TRUSTED_PROXY=false failed: expected 127.0.0.1, got ${explicitTrafficEvent.sourceIp}`);
+    }
+
+    console.log('✓ TRUSTED_PROXY=false: all forwarded headers ignored, socket IP used exclusively');
+
   } finally {
     await cleanupTestServer(server);
   }
