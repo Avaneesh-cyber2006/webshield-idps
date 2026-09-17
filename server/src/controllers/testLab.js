@@ -729,8 +729,7 @@ async function getTestConfig(req, res) {
                test.id === 'oversized_payload' ? { name: 'Test', email: 'test@test.com', message: 'A'.repeat(2000000) } :
                null,
       headers: test.id === 'suspicious_user_agent' ? { 'User-Agent': '' } :
-                       test.id === 'repeated_login_failure' ? { 'User-Agent': 'WebShield-Test-Client' } :
-                       { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                       { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
       repeatCount: test.id === 'repeated_login_failure' ? 6 :
                    test.id === 'request_rate_abuse' ? 51 : 1
     }));
@@ -764,7 +763,9 @@ async function createTestRun(req, res) {
 
     const testRun = await prisma.testRun.create({
       data: {
+        runId: runId,  // Persist the external run identifier
         mode: currentMode,
+        status: 'CREATED',
         totalTests: 0, // Will be updated when tests are submitted
         methodology: 'Browser-originated HTTP requests to protected WebShield endpoints. Each request was executed from the client browser, capturing the actual HTTP status code, request ID from X-Request-ID header, and correlating with database security and traffic events. Classification and prevention actions are derived from genuine observations, not fabricated values. Only samples with verified classifications are included in confusion matrix calculations.'
       }
@@ -906,6 +907,16 @@ async function submitBatchTestResults(req, res) {
             actualType = 'UNKNOWN';
             actualAction = 'NO_SOURCE_IP';
             evidence = { noSourceIp: true, requestId };
+          } else if (!trafficEvent.method) {
+            // No HTTP method recorded - cannot validate
+            actualType = 'UNKNOWN';
+            actualAction = 'NO_METHOD';
+            evidence = { noMethod: true, requestId };
+          } else if (!trafficEvent.path) {
+            // No endpoint recorded - cannot validate
+            actualType = 'UNKNOWN';
+            actualAction = 'NO_ENDPOINT';
+            evidence = { noEndpoint: true, requestId };
           } else {
             // Look up security event (must belong to this test run)
             const securityEvent = await prisma.securityEvent.findFirst({
@@ -928,7 +939,10 @@ async function submitBatchTestResults(req, res) {
                 severity: securityEvent.severity,
                 action: securityEvent.action,
                 trafficEventStatus: trafficEvent.status,
-                trafficEventAction: trafficEvent.action
+                trafficEventAction: trafficEvent.action,
+                method: trafficEvent.method,
+                path: trafficEvent.path,
+                sourceIp: trafficEvent.sourceIp
               };
             } else if (trafficEvent && trafficEvent.riskScore > 0) {
               actualType = 'ATTACK';
@@ -940,7 +954,10 @@ async function submitBatchTestResults(req, res) {
                 securityEventFound: false,
                 trafficEventFound: true,
                 action: trafficEvent.action,
-                trafficEventStatus: trafficEvent.status
+                trafficEventStatus: trafficEvent.status,
+                method: trafficEvent.method,
+                path: trafficEvent.path,
+                sourceIp: trafficEvent.sourceIp
               };
             } else {
               // No detection, no risk score - this is a normal request
@@ -952,7 +969,10 @@ async function submitBatchTestResults(req, res) {
               evidence = {
                 allowed: true,
                 httpStatus: trafficEvent.status,
-                noDetection: true
+                noDetection: true,
+                method: trafficEvent.method,
+                path: trafficEvent.path,
+                sourceIp: trafficEvent.sourceIp
               };
             }
           }
@@ -1136,37 +1156,20 @@ async function cleanupTestRun(req, res) {
       });
     }
 
-    // Find all traffic events specifically associated with this test run via runId
-    const trafficEvents = await prisma.trafficEvent.findMany({
+    // Clean up blocks specifically owned by this test run
+    // This is safe: only blocks with testRunId matching this run are removed
+    const blockedSources = await prisma.blockedSource.findMany({
       where: {
-        runId: testRunId
+        testRunId: testRunId
       }
     });
 
-    // Get unique source IPs from this test run's events only
-    const sourceIps = [...new Set(trafficEvents.map(e => e.sourceIp))];
-
-    // Clean up temporary blocks for these IPs (only those created during the test window)
-    const testRunStart = testRun.createdAt;
-    const testRunEnd = testRun.completedAt || new Date();
-
     let cleanedCount = 0;
-    for (const sourceIp of sourceIps) {
-      const blockedSource = await prisma.blockedSource.findFirst({
-        where: {
-          sourceIp: sourceIp,
-          blockedAt: {
-            gte: testRunStart
-          }
-        }
+    for (const blockedSource of blockedSources) {
+      await prisma.blockedSource.delete({
+        where: { id: blockedSource.id }
       });
-
-      if (blockedSource) {
-        await prisma.blockedSource.delete({
-          where: { id: blockedSource.id }
-        });
-        cleanedCount++;
-      }
+      cleanedCount++;
     }
 
     // Update test run status to CLEANED_UP

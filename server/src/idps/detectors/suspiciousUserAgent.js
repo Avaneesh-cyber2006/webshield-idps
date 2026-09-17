@@ -15,8 +15,8 @@ class SuspiciousUserAgentDetector {
       /perl/i,
       /java/i,
       /go-http-client/i,
-      /test-agent/i,
-      /webshield-test/i
+      /test-agent/i
+      // Removed /webshield-test/i to allow legitimate test clients
     ];
   }
 

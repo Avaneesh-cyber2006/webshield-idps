@@ -42,6 +42,7 @@ model BlockedSource {
   blockedAt DateTime @default(now())
   expiresAt DateTime?
   active    Boolean  @default(true)
+  testRunId String?  // Track which TestRun created this block for safe cleanup
   createdAt DateTime @default(now())
 }
 

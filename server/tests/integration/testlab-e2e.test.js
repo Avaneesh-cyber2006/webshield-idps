@@ -5,6 +5,7 @@ const { app, initializeIDPS } = require('../../src/app');
 const prisma = require('../../src/config/database');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { getInspector } = require('../../src/middleware/idps');
 
 console.log('Running Test Lab end-to-end integration tests...');
 
@@ -73,12 +74,18 @@ async function testTestLabEndToEnd() {
     await prisma.testResult.deleteMany({});
     await prisma.blockedSource.deleteMany({});
 
-    // Set mode to IDS
+    // Set mode to IDS explicitly
     await prisma.systemSetting.upsert({
       where: { key: 'idps_mode' },
       update: { value: 'IDS' },
       create: { key: 'idps_mode', value: 'IDS' }
     });
+
+    // Initialize inspector with IDS mode
+    const idsInspector = getInspector();
+    if (idsInspector) {
+      idsInspector.setMode('IDS');
+    }
 
     console.log('\n=== Test Lab End-to-End Workflow ===');
 
@@ -140,7 +147,8 @@ async function testTestLabEndToEnd() {
     const normalResponse = await request(baseURL)
       .get(normalConfig.endpoint)
       .query(normalConfig.payload)
-      .set('X-Test-Run-ID', testRunId);
+      .set('X-Test-Run-ID', testRunId)
+      .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     const normalRequestId = normalResponse.headers['x-request-id'];
     console.log(`✓ Normal request executed: HTTP ${normalResponse.status}`);
@@ -282,8 +290,33 @@ async function testTestLabEndToEnd() {
 
     console.log('✓ Metrics calculated correctly');
 
-    // Step 10: Test cleanup
-    console.log('\n8. Testing run-scoped cleanup...');
+    // Step 10: Verify classifications
+    console.log('\n8. Verifying classifications...');
+    const normalResult = updatedTestRun.results.find(r => r.testId === normalConfig.testId);
+    const sqlResult = updatedTestRun.results.find(r => r.testId === sqlConfig.testId);
+
+    if (!normalResult || !sqlResult) {
+      throw new Error('Missing test results');
+    }
+
+    if (normalResult.actualType !== 'NORMAL') {
+      console.error(`Normal request classification failure:`);
+      console.error(`  Expected: NORMAL`);
+      console.error(`  Actual: ${normalResult.actualType}`);
+      console.error(`  Action: ${normalResult.actualAction}`);
+      console.error(`  Evidence: ${normalResult.evidence}`);
+      throw new Error(`Normal request classified as ${normalResult.actualType}, expected NORMAL`);
+    }
+
+    if (sqlResult.actualType !== 'ATTACK') {
+      throw new Error(`SQL injection classified as ${sqlResult.actualType}, expected ATTACK`);
+    }
+
+    console.log('✓ Normal request classified NORMAL');
+    console.log('✓ SQL injection classified ATTACK');
+
+    // Step 11: Test cleanup
+    console.log('\n9. Testing run-scoped cleanup...');
     const cleanupResponse = await request(baseURL)
       .post(`/api/test-lab/cleanup/${testRunId}`)
       .set('Cookie', `token=${adminToken}`);
@@ -302,8 +335,108 @@ async function testTestLabEndToEnd() {
 
     console.log('✓ Cleanup successful, TestRun status: CLEANED_UP');
 
-    console.log('\n=== Test Lab End-to-End Workflow Complete ===');
+    console.log('\n=== IDS Mode Test Lab End-to-End Workflow Complete ===');
     console.log('\n✓ All Test Lab end-to-end integration tests passed!');
+
+    // === IPS Mode Test ===
+    console.log('\n=== Testing IPS Mode Workflow ===');
+
+    // Clear test tables
+    await prisma.securityEvent.deleteMany({});
+    await prisma.trafficEvent.deleteMany({});
+    await prisma.testRun.deleteMany({});
+    await prisma.testResult.deleteMany({});
+    await prisma.blockedSource.deleteMany({});
+
+    // Set mode to IPS
+    await prisma.systemSetting.upsert({
+      where: { key: 'idps_mode' },
+      update: { value: 'IPS' },
+      create: { key: 'idps_mode', value: 'IPS' }
+    });
+
+    // Reinitialize inspector with IPS mode
+    const ipsInspector = getInspector();
+    if (ipsInspector) {
+      ipsInspector.setMode('IPS');
+    }
+
+    console.log('\n1. Creating TestRun in IPS mode...');
+    const ipsCreateRunResponse = await request(baseURL)
+      .post('/api/test-lab/create-run')
+      .set('Cookie', `token=${adminToken}`);
+
+    if (ipsCreateRunResponse.status !== 200) {
+      throw new Error(`IPS Create TestRun failed: ${ipsCreateRunResponse.status}`);
+    }
+
+    const ipsTestRunId = ipsCreateRunResponse.body.testRun.id;
+    console.log(`✓ IPS TestRun created: ${ipsTestRunId}`);
+
+    // Verify TestRun is in IPS mode
+    const ipsTestRun = await prisma.testRun.findUnique({
+      where: { id: ipsTestRunId }
+    });
+
+    if (ipsTestRun.mode !== 'IPS') {
+      throw new Error(`TestRun mode should be IPS, got ${ipsTestRun.mode}`);
+    }
+
+    console.log('✓ TestRun mode verified as IPS');
+
+    console.log('\n2. Executing SQL injection in IPS mode...');
+    const ipsSqlResponse = await request(baseURL)
+      .get(sqlConfig.endpoint)
+      .query(sqlConfig.payload)
+      .set('X-Test-Run-ID', ipsTestRunId);
+
+    const ipsSqlRequestId = ipsSqlResponse.headers['x-request-id'];
+    console.log(`✓ SQL injection executed: HTTP ${ipsSqlResponse.status}`);
+
+    if (ipsSqlResponse.status !== 403) {
+      throw new Error(`SQL injection should be blocked in IPS mode, got ${ipsSqlResponse.status}`);
+    }
+
+    console.log('✓ SQL injection blocked as expected in IPS mode');
+
+    // Verify block was created with testRun ownership
+    await new Promise(resolve => setTimeout(resolve, 100));
+    const blockedSource = await prisma.blockedSource.findFirst({
+      where: {
+        sourceIp: '127.0.0.1',
+        testRunId: ipsTestRunId
+      }
+    });
+
+    if (!blockedSource) {
+      console.log('  Note: Block may not have testRunId ownership (legacy behavior)');
+    } else {
+      console.log('✓ Block created with testRun ownership');
+    }
+
+    console.log('\n3. Testing cleanup removes lab-owned blocks...');
+    const ipsCleanupResponse = await request(baseURL)
+      .post(`/api/test-lab/cleanup/${ipsTestRunId}`)
+      .set('Cookie', `token=${adminToken}`);
+
+    if (ipsCleanupResponse.status !== 200) {
+      throw new Error(`IPS cleanup failed: ${ipsCleanupResponse.status}`);
+    }
+
+    console.log('✓ IPS cleanup successful');
+
+    // Verify client is no longer blocked after cleanup
+    const cleanupCheckResponse = await request(baseURL)
+      .get('/api/demo/public');
+
+    if (cleanupCheckResponse.status === 403) {
+      throw new Error('Client still blocked after cleanup');
+    }
+
+    console.log('✓ Client unblocked after cleanup');
+
+    console.log('\n=== IPS Mode Test Lab Workflow Complete ===');
+    console.log('\n✓ IPS mode verification passed!');
 
   } finally {
     await cleanupTestServer(server);

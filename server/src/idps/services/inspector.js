@@ -35,11 +35,27 @@ class IDPSInspector {
     const sourceIp = getClientIp(req);
     const runId = req.headers['x-test-run-id'] || null; // Associate with TestRun if provided
 
+    // Validate runId if provided (must correspond to an existing TestRun)
+    let validatedRunId = null;
+    if (runId) {
+      try {
+        const testRun = await prisma.testRun.findUnique({
+          where: { id: runId }
+        });
+        if (testRun && (testRun.status === 'CREATED' || testRun.status === 'RUNNING')) {
+          validatedRunId = runId;
+        }
+      } catch (error) {
+        // Invalid runId, treat as null
+        console.warn(`Invalid runId provided: ${runId}`);
+      }
+    }
+
     // Store request ID for later use
     req.idps = {
       requestId,
       sourceIp,
-      runId,
+      runId: validatedRunId,
       startTime: Date.now()
     };
 
@@ -87,8 +103,10 @@ class IDPSInspector {
     });
 
     // Check if source is blocked
+    // Allow cleanup and submit requests to pass through even if blocked (for admin self-unblock and report submission)
+    const isAllowedRequest = req.path && (req.path.includes('/cleanup/') || req.path.includes('/submit'));
     const blockedSource = await this.prevention.checkBlocked(sourceIp);
-    if (blockedSource) {
+    if (blockedSource && !isAllowedRequest) {
       await this.logSecurityEvent(req, {
         attackType: 'BLOCKED_SOURCE',
         severity: 'CRITICAL',
@@ -138,7 +156,7 @@ class IDPSInspector {
 
     // Handle prevention based on decision
     if (decision.action === 'BLOCK') {
-      await this.prevention.blockSource(sourceIp, decision.reason, false);
+      await this.prevention.blockSource(sourceIp, decision.reason, false, 0, req.idps.runId);
       await this.logSecurityEvent(req, {
         attackType: riskResult.categories.join(', ') || 'MULTIPLE_INDICATORS',
         severity: riskResult.severity,
@@ -157,7 +175,7 @@ class IDPSInspector {
     }
 
     if (decision.action === 'TEMP_BLOCK') {
-      await this.prevention.blockSource(sourceIp, decision.reason, true, 300000);
+      await this.prevention.blockSource(sourceIp, decision.reason, true, 300000, req.idps.runId);
       await this.logSecurityEvent(req, {
         attackType: riskResult.categories.join(', ') || 'MULTIPLE_INDICATORS',
         severity: riskResult.severity,

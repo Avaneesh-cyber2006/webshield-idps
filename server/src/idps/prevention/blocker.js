@@ -36,7 +36,7 @@ class PreventionLayer {
     }
   }
 
-  async blockSource(sourceIp, reason, isTemporary = false, durationMs = 300000) {
+  async blockSource(sourceIp, reason, isTemporary = false, durationMs = 300000, testRunId = null) {
     try {
       const expiresAt = isTemporary
         ? new Date(Date.now() + durationMs)
@@ -48,14 +48,16 @@ class PreventionLayer {
           reason,
           blockedAt: new Date(),
           expiresAt,
-          active: true
+          active: true,
+          testRunId: testRunId || null  // Update ownership if provided
         },
         create: {
           sourceIp,
           reason,
           blockedAt: new Date(),
           expiresAt,
-          active: true
+          active: true,
+          testRunId: testRunId || null  // Track ownership if provided
         }
       });
 
