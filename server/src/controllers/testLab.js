@@ -623,14 +623,27 @@ async function executeTest(test, req) {
 
 /**
  * Calculate confusion matrix and metrics from genuine observations
+ * Only includes samples with verified classifications (excludes UNKNOWN, ERROR, NO_CORRELATION)
  */
 function calculateMetrics(results) {
   let truePositive = 0;
   let trueNegative = 0;
   let falsePositive = 0;
   let falseNegative = 0;
+  let executionErrors = 0;
+  let unevaluated = 0;
 
   for (const result of results) {
+    // Skip execution errors and unknown classifications
+    if (result.actualType === 'UNKNOWN' || result.actualType === 'ERROR' || result.actualType === 'NO_CORRELATION') {
+      if (result.actualType === 'ERROR') {
+        executionErrors++;
+      } else {
+        unevaluated++;
+      }
+      continue;
+    }
+
     const isAttack = result.expectedType === 'ATTACK';
     const detected = result.actualType === 'ATTACK';
 
@@ -646,11 +659,12 @@ function calculateMetrics(results) {
   }
 
   const total = results.length;
+  const evaluated = truePositive + trueNegative + falsePositive + falseNegative;
   const passed = results.filter(r => r.passed).length;
   const failed = total - passed;
 
-  // Calculate metrics with division protection
-  const accuracy = total > 0 ? (truePositive + trueNegative) / total : 0;
+  // Calculate metrics from evaluated samples only
+  const accuracy = evaluated > 0 ? (truePositive + trueNegative) / evaluated : 0;
   const precision = (truePositive + falsePositive) > 0 ? truePositive / (truePositive + falsePositive) : 0;
   const recall = (truePositive + falseNegative) > 0 ? truePositive / (truePositive + falseNegative) : 0;
   const f1Score = (precision + recall) > 0 ? (2 * precision * recall) / (precision + recall) : 0;
@@ -663,11 +677,14 @@ function calculateMetrics(results) {
     passed,
     failed,
     total,
+    evaluated,
+    executionErrors,
+    unevaluated,
     accuracy: accuracy * 100,
     precision: precision * 100,
     recall: recall * 100,
     f1Score: f1Score * 100,
-    methodology: 'Calculated from genuine HTTP request observations and database security events. Each test sends a real request to protected endpoints, captures the request ID, and retrieves the actual detection event and risk score from the database. Classification is based on whether a security event was actually generated for the request.'
+    methodology: 'Calculated from genuine HTTP request observations and database security events. Only samples with verified classifications are included in confusion matrix calculations. Execution errors and unevaluated samples are excluded from TP/TN/FP/FN counts.'
   };
 }
 
@@ -683,16 +700,16 @@ async function getTestConfig(req, res) {
       expectedAction: test.expectedAction,
       description: test.description,
       // Return endpoints WITHOUT /api prefix since frontend prepends it
-      endpoint: test.id === 'normal_request' ? '/public' :
-                test.id === 'normal_login' ? '/auth/login' :
-                test.id === 'sql_injection' ? '/demo/search' :
-                test.id === 'xss' ? '/demo/search' :
-                test.id === 'path_traversal' ? '/demo/search' :
-                test.id === 'invalid_auth' ? '/auth/login' :
-                test.id === 'repeated_login_failure' ? '/auth/login' :
-                test.id === 'request_rate_abuse' ? '/demo/dashboard' :
-                test.id === 'suspicious_user_agent' ? '/demo/dashboard' :
-                test.id === 'oversized_payload' ? '/demo/contact' : '/public',
+      endpoint: test.id === 'normal_request' ? '/api/demo/public' :
+                test.id === 'normal_login' ? '/api/auth/login' :
+                test.id === 'sql_injection' ? '/api/demo/search' :
+                test.id === 'xss' ? '/api/demo/search' :
+                test.id === 'path_traversal' ? '/api/demo/search' :
+                test.id === 'invalid_auth' ? '/api/auth/login' :
+                test.id === 'repeated_login_failure' ? '/api/auth/login' :
+                test.id === 'request_rate_abuse' ? '/api/demo/dashboard' :
+                test.id === 'suspicious_user_agent' ? '/api/demo/dashboard' :
+                test.id === 'oversized_payload' ? '/api/demo/contact' : '/api/demo/public',
       method: test.id === 'normal_request' ? 'GET' :
               test.id === 'normal_login' ? 'POST' :
               test.id === 'sql_injection' ? 'GET' :
@@ -744,12 +761,17 @@ async function submitBatchTestResults(req, res) {
       });
     }
 
-    // Create test run
+    // Create test run with actual system mode
+    const modeSetting = await prisma.systemSetting.findUnique({
+      where: { key: 'idps_mode' }
+    });
+    const currentMode = modeSetting ? modeSetting.value : 'IDS';
+
     const testRun = await prisma.testRun.create({
       data: {
-        mode: 'IDS', // TODO: Get from current system setting
+        mode: currentMode,
         totalTests: results.length,
-        methodology: 'Browser-originated HTTP requests to protected WebShield endpoints. Each request was executed from the client browser, capturing the actual HTTP status code, request ID from X-Request-ID header, and correlating with database security and traffic events. Classification and prevention actions are derived from genuine observations, not fabricated values.'
+        methodology: 'Browser-originated HTTP requests to protected WebShield endpoints. Each request was executed from the client browser, capturing the actual HTTP status code, request ID from X-Request-ID header, and correlating with database security and traffic events. Classification and prevention actions are derived from genuine observations, not fabricated values. Only samples with verified classifications are included in confusion matrix calculations.'
       }
     });
 
@@ -900,25 +922,30 @@ async function submitBatchTestResults(req, res) {
       }
     });
 
-    // Return complete report
+    // Return complete report with nested metrics object
     res.json({
       success: true,
       testRun: {
         id: testRun.id,
         mode: testRun.mode,
         totalTests: testRun.totalTests,
-        passed: metrics.passed,
-        failed: metrics.failed,
-        truePositive: metrics.truePositive,
-        trueNegative: metrics.trueNegative,
-        falsePositive: metrics.falsePositive,
-        falseNegative: metrics.falseNegative,
-        accuracy: metrics.accuracy,
-        precision: metrics.precision,
-        recall: metrics.recall,
-        f1Score: metrics.f1Score,
         methodology: testRun.methodology,
-        results: processedResults
+        results: processedResults,
+        metrics: {
+          passed: metrics.passed,
+          failed: metrics.failed,
+          truePositive: metrics.truePositive,
+          trueNegative: metrics.trueNegative,
+          falsePositive: metrics.falsePositive,
+          falseNegative: metrics.falseNegative,
+          accuracy: metrics.accuracy,
+          precision: metrics.precision,
+          recall: metrics.recall,
+          f1Score: metrics.f1Score,
+          evaluated: metrics.evaluated,
+          executionErrors: metrics.executionErrors,
+          unevaluated: metrics.unevaluated
+        }
       }
     });
   } catch (error) {

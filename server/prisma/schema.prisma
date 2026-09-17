@@ -82,6 +82,7 @@ model TrafficEvent {
 
 model TestRun {
   id            String   @id @default(uuid())
+  mode          String   @default("IDS")
   startedAt     DateTime @default(now())
   completedAt   DateTime?
   totalTests    Int
@@ -103,6 +104,7 @@ model TestRun {
 model TestResult {
   id             String   @id @default(uuid())
   testRunId      String
+  testId         String
   testName       String
   expectedType   String
   expectedAction String
@@ -110,6 +112,8 @@ model TestResult {
   actualAction   String?
   riskScore      Int?
   passed         Boolean
+  requestId      String?
+  evidence       String?
   createdAt      DateTime @default(now())
 
   testRun TestRun @relation(fields: [testRunId], references: [id], onDelete: Cascade)

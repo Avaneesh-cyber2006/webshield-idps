@@ -80,7 +80,7 @@ const TestLab = () => {
 
     for (let i = 0; i < repeatCount; i++) {
       try {
-        const url = endpoint  // Backend now returns full path without /api prefix
+        const url = endpoint  // Backend now returns complete API path
 
         let response
         if (method === 'GET') {
