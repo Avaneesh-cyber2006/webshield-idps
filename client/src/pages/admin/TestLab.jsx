@@ -78,9 +78,16 @@ const TestLab = () => {
     const { testId, endpoint, method, payload, headers, repeatCount } = config
     const results = []
 
+    // Save admin cookie before authentication tests
+    const originalCookie = document.cookie
+
     for (let i = 0; i < repeatCount; i++) {
       try {
         const url = endpoint  // Backend now returns complete API path
+
+        // For authentication tests, don't include credentials to preserve admin session
+        const isAuthTest = endpoint.includes('/auth/login')
+        const useCredentials = !isAuthTest
 
         let response
         if (method === 'GET') {
@@ -91,7 +98,7 @@ const TestLab = () => {
               'Content-Type': 'application/json',
               ...headers
             },
-            credentials: 'include'
+            credentials: useCredentials ? 'include' : 'same-origin'
           })
         } else {
           response = await fetch(url, {
@@ -100,7 +107,7 @@ const TestLab = () => {
               'Content-Type': 'application/json',
               ...headers
             },
-            credentials: 'include',
+            credentials: useCredentials ? 'include' : 'same-origin',
             body: JSON.stringify(payload)
           })
         }
@@ -124,6 +131,11 @@ const TestLab = () => {
           error: error.message
         })
       }
+    }
+
+    // Restore admin cookie after authentication tests
+    if (endpoint.includes('/auth/login')) {
+      document.cookie = originalCookie
     }
 
     // Return the last result (or error if all failed)

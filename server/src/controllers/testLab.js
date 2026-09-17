@@ -804,65 +804,70 @@ async function submitBatchTestResults(req, res) {
         actualAction = 'NO_CORRELATION';
         evidence = { noRequestId: true, httpStatus };
       } else {
-        // Look up security event
-        const securityEvent = await prisma.securityEvent.findFirst({
-          where: { requestId: requestId },
-          orderBy: { createdAt: 'desc' }
-        });
-
-        // Look up traffic event
+        // Look up traffic event first (required for validation)
         const trafficEvent = await prisma.trafficEvent.findFirst({
           where: { requestId: requestId },
           orderBy: { createdAt: 'desc' }
         });
 
-        if (securityEvent && securityEvent.riskScore > 0) {
-          actualType = 'ATTACK';
-          actualAction = securityEvent.action;
-          riskScore = securityEvent.riskScore;
-          detectionSucceeded = true;
-          preventionSucceeded = securityEvent.action !== 'ALLOW' && securityEvent.action !== 'LOG';
-          evidence = {
-            securityEventFound: true,
-            attackType: securityEvent.attackType,
-            severity: securityEvent.severity,
-            action: securityEvent.action
-          };
-        } else if (trafficEvent && trafficEvent.riskScore > 0) {
-          actualType = 'ATTACK';
-          actualAction = trafficEvent.action;
-          riskScore = trafficEvent.riskScore;
-          detectionSucceeded = true;
-          preventionSucceeded = trafficEvent.action !== 'ALLOW' && trafficEvent.action !== 'LOG';
-          evidence = {
-            securityEventFound: false,
-            trafficEventFound: true,
-            action: trafficEvent.action
-          };
-        } else if (httpStatus === 403 || httpStatus === 429) {
-          actualType = 'ATTACK';
-          actualAction = httpStatus === 403 ? 'BLOCK' : 'RATE_LIMIT';
-          riskScore = trafficEvent?.riskScore || 50;
-          detectionSucceeded = true;
-          preventionSucceeded = true;
-          evidence = {
-            blockedByHttp: true,
-            httpStatus
-          };
-        } else if (httpStatus === 200 || httpStatus === 201) {
-          actualType = 'NORMAL';
-          actualAction = 'ALLOW';
-          riskScore = 0;
-          detectionSucceeded = test.expectedType === 'NORMAL';
-          preventionSucceeded = true;
-          evidence = {
-            allowed: true,
-            httpStatus
-          };
-        } else {
+        if (!trafficEvent) {
+          // No traffic event - cannot validate
           actualType = 'UNKNOWN';
-          actualAction = 'HTTP_' + httpStatus;
-          evidence = { httpStatus, unexpectedStatus: true };
+          actualAction = 'NO_TRAFFIC_EVENT';
+          evidence = { noTrafficEvent: true, requestId };
+        } else {
+          // Validate: HTTP status matches
+          if (trafficEvent.status !== httpStatus) {
+            actualType = 'UNKNOWN';
+            actualAction = 'STATUS_MISMATCH';
+            evidence = { statusMismatch: true, expectedStatus: httpStatus, actualStatus: trafficEvent.status };
+          } else {
+            // Look up security event
+            const securityEvent = await prisma.securityEvent.findFirst({
+              where: { requestId: requestId },
+              orderBy: { createdAt: 'desc' }
+            });
+
+            if (securityEvent && securityEvent.riskScore > 0) {
+              actualType = 'ATTACK';
+              actualAction = securityEvent.action;
+              riskScore = securityEvent.riskScore;
+              detectionSucceeded = true;
+              preventionSucceeded = securityEvent.action !== 'ALLOW' && securityEvent.action !== 'LOG';
+              evidence = {
+                securityEventFound: true,
+                attackType: securityEvent.attackType,
+                severity: securityEvent.severity,
+                action: securityEvent.action,
+                trafficEventStatus: trafficEvent.status,
+                trafficEventAction: trafficEvent.action
+              };
+            } else if (trafficEvent && trafficEvent.riskScore > 0) {
+              actualType = 'ATTACK';
+              actualAction = trafficEvent.action;
+              riskScore = trafficEvent.riskScore;
+              detectionSucceeded = true;
+              preventionSucceeded = trafficEvent.action !== 'ALLOW' && trafficEvent.action !== 'LOG';
+              evidence = {
+                securityEventFound: false,
+                trafficEventFound: true,
+                action: trafficEvent.action,
+                trafficEventStatus: trafficEvent.status
+              };
+            } else {
+              // No detection, no risk score - this is a normal request
+              actualType = 'NORMAL';
+              actualAction = 'ALLOW';
+              riskScore = 0;
+              detectionSucceeded = test.expectedType === 'NORMAL';
+              preventionSucceeded = true;
+              evidence = {
+                allowed: true,
+                httpStatus: trafficEvent.status,
+                noDetection: true
+              };
+            }
+          }
         }
       }
 
@@ -1016,6 +1021,75 @@ async function getTestRun(req, res) {
   }
 }
 
+/**
+ * Clean up blocks created during a test run
+ */
+async function cleanupTestRun(req, res) {
+  try {
+    const { testRunId } = req.params;
+
+    // Verify test run exists
+    const testRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
+    });
+
+    if (!testRun) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test run not found'
+      });
+    }
+
+    // Find all traffic events for this test run
+    const trafficEvents = await prisma.trafficEvent.findMany({
+      where: {
+        requestId: {
+          startsWith: 'REQ-'
+        }
+      }
+    });
+
+    // Get unique source IPs from this test run's events
+    // Note: This is a simple approach - in production you'd want to associate requests with test runs
+    const sourceIps = [...new Set(trafficEvents.map(e => e.sourceIp))];
+
+    // Clean up temporary blocks for these IPs (only those created during the test window)
+    const testRunStart = testRun.createdAt;
+    const testRunEnd = testRun.completedAt || new Date();
+
+    let cleanedCount = 0;
+    for (const sourceIp of sourceIps) {
+      const blockedSource = await prisma.blockedSource.findFirst({
+        where: {
+          sourceIp: sourceIp,
+          blockedAt: {
+            gte: testRunStart
+          }
+        }
+      });
+
+      if (blockedSource) {
+        await prisma.blockedSource.delete({
+          where: { id: blockedSource.id }
+        });
+        cleanedCount++;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Cleaned up ${cleanedCount} temporary blocks`,
+      cleanedCount
+    });
+  } catch (error) {
+    console.error('Cleanup test run error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup test run'
+    });
+  }
+}
+
 module.exports = {
   getTests,
   runTest,
@@ -1023,5 +1097,6 @@ module.exports = {
   getTestRuns,
   getTestRun,
   getTestConfig,
-  submitBatchTestResults
+  submitBatchTestResults,
+  cleanupTestRun
 };

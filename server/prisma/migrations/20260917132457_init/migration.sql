@@ -80,6 +80,7 @@ CREATE TABLE "TrafficEvent" (
 -- CreateTable
 CREATE TABLE "TestRun" (
     "id" TEXT NOT NULL PRIMARY KEY,
+    "mode" TEXT NOT NULL DEFAULT 'IDS',
     "startedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "completedAt" DATETIME,
     "totalTests" INTEGER NOT NULL,
@@ -93,6 +94,7 @@ CREATE TABLE "TestRun" (
     "precision" REAL,
     "recall" REAL,
     "f1Score" REAL,
+    "methodology" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -100,6 +102,7 @@ CREATE TABLE "TestRun" (
 CREATE TABLE "TestResult" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "testRunId" TEXT NOT NULL,
+    "testId" TEXT,
     "testName" TEXT NOT NULL,
     "expectedType" TEXT NOT NULL,
     "expectedAction" TEXT NOT NULL,
@@ -107,6 +110,8 @@ CREATE TABLE "TestResult" (
     "actualAction" TEXT,
     "riskScore" INTEGER,
     "passed" BOOLEAN NOT NULL,
+    "requestId" TEXT,
+    "evidence" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "TestResult_testRunId_fkey" FOREIGN KEY ("testRunId") REFERENCES "TestRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
