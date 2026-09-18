@@ -20,6 +20,12 @@ class IDPSInspector {
 
     // Load disabled detectors from database
     this.detectors.loadDisabledDetectors();
+
+    // Wire up detector's request map to prevention layer for consistent rate limiting
+    const requestRateDetector = this.detectors.getDetector('requestRate');
+    if (requestRateDetector && requestRateDetector.requestMap) {
+      this.prevention.setDetectorRequestMap(requestRateDetector.requestMap);
+    }
   }
 
   setMode(mode) {
@@ -197,8 +203,8 @@ class IDPSInspector {
       const rateLimitResult = this.prevention.checkRateLimit(sourceIp);
       if (!rateLimitResult.allowed) {
         await this.logSecurityEvent(req, {
-          attackType: 'RATE_LIMIT_EXCEEDED',
-          severity: 'MEDIUM',
+          attackType: 'REQUEST_RATE_ABUSE',
+          severity: riskResult.severity,
           riskScore: riskResult.score,
           action: decision.action,
           description: decision.reason,
@@ -209,6 +215,7 @@ class IDPSInspector {
           success: false,
           message: 'Rate limit exceeded',
           requestId,
+          riskScore: riskResult.score,
           retryAfter: Math.ceil((rateLimitResult.resetTime - Date.now()) / 1000)
         });
       }

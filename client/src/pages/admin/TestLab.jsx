@@ -57,12 +57,27 @@ const TestLab = () => {
       const configResponse = await api.get('/test-lab/config')
       const testConfigs = configResponse.data.configs
 
-      // Execute tests from the browser
+      // Execute tests from the browser with per-test cleanup for IPS mode
       const results = []
       for (const config of testConfigs) {
         const testResults = await executeBrowserTest(config, testRunId)
         // Append all individual observations (preserving repeated tests)
         results.push(...testResults)
+
+        // Per-test cleanup: if this test might have created a block (IPS mode attack tests), clean up before continuing
+        // This prevents subsequent tests from being blocked by the current test's block
+        const isAttackTest = config.expectedType === 'ATTACK'
+        const isIpsMode = createRunResponse.data.testRun.mode === 'IPS'
+        
+        if (isAttackTest && isIpsMode && testRunId) {
+          try {
+            await api.post(`/test-lab/cleanup/${testRunId}`)
+            console.log(`Per-test cleanup completed for ${config.testId}`)
+          } catch (cleanupError) {
+            console.error(`Per-test cleanup failed for ${config.testId}:`, cleanupError)
+            // Continue anyway - final cleanup will handle remaining blocks
+          }
+        }
       }
 
       // Submit batch results to server with testRunId
@@ -75,14 +90,18 @@ const TestLab = () => {
       setShowReport(true)
       fetchTestRuns()
 
-      // Perform cleanup to remove any lab-created temporary blocks
+      // Final cleanup to remove any remaining lab-created temporary blocks
       if (testRunId) {
         try {
-          await api.post(`/test-lab/cleanup/${testRunId}`)
-          console.log('Cleanup completed successfully')
+          const cleanupResponse = await api.post(`/test-lab/cleanup/${testRunId}`)
+          console.log('Final cleanup completed successfully', cleanupResponse.data)
         } catch (cleanupError) {
-          console.error('Cleanup failed (non-critical):', cleanupError)
-          // Don't fail the entire test run if cleanup fails
+          console.error('Final cleanup failed:', cleanupError)
+          // Store cleanup failure in the report for visibility
+          if (currentTestRun) {
+            currentTestRun.cleanupFailed = true
+            currentTestRun.cleanupError = cleanupError.response?.data?.message || cleanupError.message
+          }
         }
       }
     } catch (error) {
@@ -195,6 +214,16 @@ const TestLab = () => {
         <div className="bg-dark-800 rounded-lg border border-dark-600 p-6 mb-6">
           <h2 className="text-2xl font-semibold text-white mb-4">WebShield Security Test Report</h2>
 
+          {currentTestRun.cleanupFailed && (
+            <div className="bg-danger-500/10 border border-danger-500 rounded-lg p-4 mb-6">
+              <div className="flex items-center space-x-2 text-danger-500">
+                <AlertCircle className="w-5 h-5" />
+                <span className="font-semibold">Cleanup Failed</span>
+              </div>
+              <div className="text-danger-400 text-sm mt-1">{currentTestRun.cleanupError}</div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <MetricCard label="Total Tests" value={currentTestRun.results.length} />
             <MetricCard label="Passed" value={currentTestRun.metrics.passed} color="success" />
@@ -209,11 +238,16 @@ const TestLab = () => {
             <MetricCard label="False Negative" value={currentTestRun.metrics.falseNegative} color="danger" />
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <MetricCard label="Accuracy" value={`${currentTestRun.metrics.accuracy.toFixed(1)}%`} />
             <MetricCard label="Precision" value={`${currentTestRun.metrics.precision.toFixed(1)}%`} />
             <MetricCard label="Recall" value={`${currentTestRun.metrics.recall.toFixed(1)}%`} />
             <MetricCard label="F1 Score" value={`${currentTestRun.metrics.f1Score.toFixed(1)}%`} />
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <MetricCard label="Execution Errors" value={currentTestRun.metrics.executionErrors} color={currentTestRun.metrics.executionErrors > 0 ? 'danger' : 'success'} />
+            <MetricCard label="Unevaluated" value={currentTestRun.metrics.unevaluated} color={currentTestRun.metrics.unevaluated > 0 ? 'danger' : 'success'} />
           </div>
         </div>
       )}
@@ -227,6 +261,9 @@ const TestLab = () => {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Expected Action</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actual</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Actual Action</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Detector</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Detection</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Prevention</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Risk Score</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase">Result</th>
             </tr>
@@ -251,6 +288,21 @@ const TestLab = () => {
                     ) : '-'}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-300">{result?.actualAction || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-300">{result?.evidence?.actualDetectors?.join(', ') || '-'}</td>
+                  <td className="px-4 py-3">
+                    {result?.detectionSucceeded !== undefined ? (
+                      <span className={`px-2 py-1 text-xs font-semibold rounded ${result.detectionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
+                        {result.detectionSucceeded ? 'PASS' : 'FAIL'}
+                      </span>
+                    ) : '-'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {result?.preventionSucceeded !== undefined ? (
+                      <span className={`px-2 py-1 text-xs font-semibold rounded ${result.preventionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
+                        {result.preventionSucceeded ? 'PASS' : 'FAIL'}
+                      </span>
+                    ) : '-'}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-300">{result?.riskScore || '-'}</td>
                   <td className="px-4 py-3">
                     {result ? (

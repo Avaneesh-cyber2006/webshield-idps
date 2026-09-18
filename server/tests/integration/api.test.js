@@ -2,6 +2,9 @@ const assert = require('assert')
 const request = require('supertest')
 const { app } = require('../../src/app')
 
+// Setup isolated test database
+require('../setup-test-db');
+
 async function runApiTests() {
   console.log('Running API integration tests...')
 

@@ -7,6 +7,12 @@ const prisma = require('../../config/database');
 class PreventionLayer {
   constructor() {
     this.rateLimitMap = new Map();
+    // Reference to detector's request map for consistent rate limiting
+    this.detectorRequestMap = null;
+  }
+
+  setDetectorRequestMap(detectorRequestMap) {
+    this.detectorRequestMap = detectorRequestMap;
   }
 
   async checkBlocked(sourceIp) {
@@ -108,17 +114,21 @@ class PreventionLayer {
   checkRateLimit(sourceIp, maxRequests = 50, windowMs = 60000) {
     const now = Date.now();
 
-    if (!this.rateLimitMap.has(sourceIp)) {
-      this.rateLimitMap.set(sourceIp, []);
+    // Use detector's request map for consistent counting if available
+    const requestMap = this.detectorRequestMap || this.rateLimitMap;
+
+    if (!requestMap.has(sourceIp)) {
+      requestMap.set(sourceIp, []);
     }
 
-    const requests = this.rateLimitMap.get(sourceIp);
+    const requests = requestMap.get(sourceIp);
 
     // Remove requests older than the window
     const recentRequests = requests.filter(timestamp => now - timestamp < windowMs);
-    this.rateLimitMap.set(sourceIp, recentRequests);
+    requestMap.set(sourceIp, recentRequests);
 
-    // Check if rate limit exceeded
+    // Check if rate limit exceeded (detector already added current request)
+    // Do NOT add current request again - detector already did
     if (recentRequests.length >= maxRequests) {
       return {
         allowed: false,
@@ -126,9 +136,6 @@ class PreventionLayer {
         resetTime: recentRequests[0] + windowMs
       };
     }
-
-    // Add current request
-    recentRequests.push(now);
 
     return {
       allowed: true,

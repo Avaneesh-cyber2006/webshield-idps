@@ -7,6 +7,9 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getInspector } = require('../../src/middleware/idps');
 
+// Setup isolated test database
+require('../setup-test-db');
+
 console.log('Running Test Lab end-to-end integration tests...');
 
 async function setupTestServer() {

@@ -2,6 +2,7 @@ const prisma = require('../config/database');
 const { getInspector } = require('../middleware/idps');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const idpsConfig = require('../config/idps');
 
 /**
  * Test definitions
@@ -78,6 +79,54 @@ const TESTS = [
     description: 'Request exceeding safe payload size'
   }
 ];
+
+/**
+ * Map test IDs to expected detector categories
+ */
+function getExpectedDetectorForTest(testId) {
+  const detectorMap = {
+    'sql_injection': 'SQL_INJECTION',
+    'xss': 'XSS',
+    'path_traversal': 'PATH_TRAVERSAL',
+    'invalid_auth': 'AUTH_FAILURE',
+    'repeated_login_failure': 'LOGIN_ABUSE',
+    'request_rate_abuse': 'REQUEST_RATE_ABUSE',
+    'suspicious_user_agent': 'SUSPICIOUS_USER_AGENT',
+    'oversized_payload': 'PAYLOAD_SIZE_EXCEEDED'
+  };
+  return detectorMap[testId] || null;
+}
+
+/**
+ * Derive expected action from actual policy based on risk score and mode
+ */
+function getExpectedActionForTest(testId, mode, riskScore) {
+  // For normal requests, always expect ALLOW
+  if (testId === 'normal_request' || testId === 'normal_login') {
+    return idpsConfig.actions.ALLOW;
+  }
+
+  // For attacks in IDS mode, expect ALERT (if detected) or LOG
+  if (mode === 'IDS') {
+    return riskScore > 0 ? idpsConfig.actions.ALERT : idpsConfig.actions.LOG;
+  }
+
+  // For attacks in IPS mode, derive from risk score using actual policy
+  if (mode === 'IPS') {
+    if (riskScore >= idpsConfig.riskLevels.CRITICAL.min) {
+      return idpsConfig.actions.BLOCK;
+    } else if (riskScore >= idpsConfig.riskLevels.HIGH.min) {
+      return idpsConfig.actions.TEMP_BLOCK;
+    } else if (riskScore >= idpsConfig.riskLevels.MEDIUM.min) {
+      return idpsConfig.actions.RATE_LIMIT;
+    } else {
+      return idpsConfig.actions.ALERT;  // Low risk still alerts in IPS
+    }
+  }
+
+  // Monitor mode - always LOG
+  return idpsConfig.actions.LOG;
+}
 
 /**
  * Get all available tests
@@ -947,6 +996,16 @@ async function submitBatchTestResults(req, res) {
               riskScore = securityEvent.riskScore;
               detectionSucceeded = true;
               preventionSucceeded = securityEvent.action !== 'ALLOW' && securityEvent.action !== 'LOG';
+              
+              // Validate detector category matches expected attack type
+              const expectedDetector = getExpectedDetectorForTest(test.id);
+              const actualDetectors = securityEvent.attackType ? securityEvent.attackType.split(', ') : [];
+              const detectorMatch = expectedDetector && actualDetectors.includes(expectedDetector);
+              
+              // Validate prevention action matches expected (mode-aware)
+              const expectedAction = getExpectedActionForTest(test.id, testRun.mode, riskScore);
+              const actionMatch = securityEvent.action === expectedAction;
+              
               evidence = {
                 securityEventFound: true,
                 attackType: securityEvent.attackType,
@@ -956,7 +1015,12 @@ async function submitBatchTestResults(req, res) {
                 trafficEventAction: trafficEvent.action,
                 method: trafficEvent.method,
                 path: trafficEvent.path,
-                sourceIp: trafficEvent.sourceIp
+                sourceIp: trafficEvent.sourceIp,
+                detectorMatch: detectorMatch,
+                expectedDetector,
+                actualDetectors,
+                actionMatch: actionMatch,
+                expectedAction
               };
             } else if (trafficEvent && trafficEvent.riskScore > 0) {
               actualType = 'ATTACK';
@@ -964,6 +1028,12 @@ async function submitBatchTestResults(req, res) {
               riskScore = trafficEvent.riskScore;
               detectionSucceeded = true;
               preventionSucceeded = trafficEvent.action !== 'ALLOW' && trafficEvent.action !== 'LOG';
+              
+              // Validate detector category for traffic event detection
+              const expectedDetector = getExpectedDetectorForTest(test.id);
+              const actualDetectors = [];  // Traffic events don't have attackType
+              const detectorMatch = !expectedDetector;  // Traffic events without security event can't validate detector
+              
               evidence = {
                 securityEventFound: false,
                 trafficEventFound: true,
@@ -971,7 +1041,10 @@ async function submitBatchTestResults(req, res) {
                 trafficEventStatus: trafficEvent.status,
                 method: trafficEvent.method,
                 path: trafficEvent.path,
-                sourceIp: trafficEvent.sourceIp
+                sourceIp: trafficEvent.sourceIp,
+                detectorMatch: detectorMatch,
+                expectedDetector,
+                actualDetectors
               };
             } else {
               // No detection, no risk score - this is a normal request
@@ -993,11 +1066,8 @@ async function submitBatchTestResults(req, res) {
         }
       }
 
-      // Determine expected action based on current mode
-      let expectedAction = test.expectedAction;
-      if (test.expectedType === 'ATTACK' && testRun.mode === 'IPS') {
-        expectedAction = 'BLOCK';  // In IPS mode, attacks should be blocked
-      }
+      // Determine expected action based on current mode and policy
+      const expectedAction = getExpectedActionForTest(test.id, testRun.mode, riskScore);
 
       // Determine if test passed
       const typeMatch = actualType === test.expectedType;
@@ -1031,7 +1101,9 @@ async function submitBatchTestResults(req, res) {
         riskScore,
         passed,
         requestId,
-        evidence
+        evidence,
+        detectionSucceeded,
+        preventionSucceeded
       });
     }
 

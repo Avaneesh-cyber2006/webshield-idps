@@ -4,6 +4,9 @@ const { Server } = require('socket.io');
 const { app, initializeIDPS } = require('../../src/app');
 const prisma = require('../../src/config/database');
 
+// Setup isolated test database
+require('../setup-test-db');
+
 console.log('Running IDPS integration tests...');
 
 async function setupTestServer() {

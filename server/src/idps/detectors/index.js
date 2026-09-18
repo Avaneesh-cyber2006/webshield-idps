@@ -114,6 +114,10 @@ class DetectorRegistry {
     this.detectors.requestRate.clear(sourceIp);
     this.detectors.authAbuse.clear(sourceIp);
   }
+
+  getDetector(detectorName) {
+    return this.detectors[detectorName];
+  }
 }
 
 module.exports = DetectorRegistry;
