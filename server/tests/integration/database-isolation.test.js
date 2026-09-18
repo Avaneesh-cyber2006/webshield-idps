@@ -1,6 +1,6 @@
 /**
  * Database Isolation Verification Test
- * Creates a file hash of the demo database, runs integration tests,
+ * Creates a file hash of the demo database, runs test database setup,
  * and verifies the hash hasn't changed to prove the demo database is not modified.
  */
 const fs = require('fs');
@@ -52,8 +52,8 @@ async function runDatabaseIsolationTest() {
   console.log('✓ Demo database path:', path.resolve(DEMO_DB_PATH));
   console.log('✓ Paths are different, safe to proceed');
 
-  // Step 3: Run integration tests with isolated database
-  console.log('\nStep 3: Running integration tests with isolated database...');
+  // Step 3: Run test database setup
+  console.log('\nStep 3: Setting up isolated test database...');
   process.env.DATABASE_URL = 'file:./test.db';
 
   try {
@@ -84,24 +84,24 @@ async function runDatabaseIsolationTest() {
     process.exit(1);
   }
 
-  // Step 4: Verify demo database hash is unchanged
-  console.log('\nStep 4: Verifying demo database hash is unchanged...');
+  // Step 4: Verify demo database hash is unchanged after setup
+  console.log('\nStep 4: Verifying demo database hash is unchanged after test database setup...');
   const finalDemoHash = calculateFileHash(DEMO_DB_PATH);
   
   if (!finalDemoHash) {
-    console.error('ERROR: Demo database was deleted during tests');
+    console.error('ERROR: Demo database was deleted during test database setup');
     process.exit(1);
   }
   
   if (initialDemoHash !== finalDemoHash) {
-    console.error('ERROR: Demo database hash changed during tests');
+    console.error('ERROR: Demo database hash changed during test database setup');
     console.error('Initial hash:', initialDemoHash);
     console.error('Final hash:', finalDemoHash);
-    console.error('This indicates the demo database was modified');
+    console.error('This indicates the demo database was modified by test database setup');
     process.exit(1);
   }
   
-  console.log('✓ Demo database hash verified unchanged');
+  console.log('✓ Demo database hash verified unchanged after test database setup');
   console.log('✓ Hash:', finalDemoHash.substring(0, 16) + '...');
 
   // Step 5: Verify actual database paths
@@ -140,10 +140,11 @@ async function runDatabaseIsolationTest() {
   }
 
   console.log('\n=== Database Isolation Verification Complete ===');
-  console.log('✓ Demo database protected and unchanged (hash verified)');
+  console.log('✓ Demo database protected and unchanged (hash verified after test database setup)');
   console.log('✓ Test database isolated and fresh');
   console.log('✓ Database paths verified distinct');
   console.log('\nDatabase isolation is working correctly.');
+  console.log('Note: Run npm run test:integration to execute the full integration suite separately.');
 }
 
 runDatabaseIsolationTest()

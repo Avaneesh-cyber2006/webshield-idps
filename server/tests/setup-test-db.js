@@ -13,6 +13,24 @@ const DEMO_DB_PATH = path.join(__dirname, '../prisma/dev.db');
 
 console.log('Setting up isolated test database...');
 
+// Resolve actual DATABASE_URL before any operations
+const databaseUrl = process.env.TEST_DATABASE_URL || 'file:./prisma/test.db';
+const resolvedDbPath = path.resolve(__dirname, '../prisma', databaseUrl.replace('file:./', ''));
+
+console.log('Resolved database path:', resolvedDbPath);
+console.log('Demo database path:', path.resolve(DEMO_DB_PATH));
+
+// Reject configuration pointing to demo database
+if (resolvedDbPath === path.resolve(DEMO_DB_PATH)) {
+  console.error('ERROR: DATABASE_URL resolves to demo database');
+  console.error('Resolved:', resolvedDbPath);
+  console.error('Demo:', path.resolve(DEMO_DB_PATH));
+  console.error('This would cause destructive operations on the demo database');
+  process.exit(1);
+}
+
+console.log('✓ Database path verified safe (not demo database)');
+
 // Ensure we're not using the demo database
 if (fs.existsSync(TEST_DB_PATH)) {
   console.log('Removing existing test database...');
@@ -29,7 +47,7 @@ if (!fs.existsSync(DEMO_DB_PATH)) {
 console.log('✓ Demo database verified and protected');
 
 // Set environment variable for test database BEFORE any Prisma client is created
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'file:./prisma/test.db';
+process.env.DATABASE_URL = databaseUrl;
 
 console.log('✓ Test database path configured:', process.env.DATABASE_URL);
 

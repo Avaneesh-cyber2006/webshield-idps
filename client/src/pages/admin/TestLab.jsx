@@ -52,6 +52,16 @@ const TestLab = () => {
       // Create TestRun BEFORE executing any test requests
       const createRunResponse = await api.post('/test-lab/create-run')
       testRunId = createRunResponse.data.testRun.id
+      
+      console.log('TestRun created:', testRunId, 'Status:', createRunResponse.data.testRun.status)
+
+      // Start TestRun (CREATED → RUNNING)
+      const startRunResponse = await api.post(`/test-lab/start/${testRunId}`)
+      console.log('TestRun started:', startRunResponse.data.testRun.status)
+      
+      if (startRunResponse.data.testRun.status !== 'RUNNING') {
+        throw new Error(`TestRun failed to start: ${startRunResponse.data.testRun.status}`)
+      }
 
       // Fetch test configurations for browser-originated execution
       const configResponse = await api.get('/test-lab/config')
@@ -277,51 +287,40 @@ const TestLab = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-dark-600">
-            {tests.map((test) => {
-              const result = currentTestRun?.results.find(r => r.testName === test.name)
-              return (
-                <tr key={test.id} className="hover:bg-dark-700">
-                  <td className="px-4 py-3 text-sm text-white">{test.name}</td>
-                  <td className="px-4 py-3">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded ${getExpectedBadge(test.expectedType)}`}>
-                      {test.expectedType}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{test.expectedAction}</td>
-                  <td className="px-4 py-3">
-                    {result ? (
-                      <span className={`px-2 py-1 text-xs font-semibold rounded ${getExpectedBadge(result.actualType)}`}>
-                        {result.actualType}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{result?.actualAction || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{result?.evidence?.actualDetectors?.join(', ') || '-'}</td>
-                  <td className="px-4 py-3">
-                    {result?.detectionSucceeded !== undefined ? (
-                      <span className={`px-2 py-1 text-xs font-semibold rounded ${result.detectionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
-                        {result.detectionSucceeded ? 'PASS' : 'FAIL'}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-4 py-3">
-                    {result?.preventionSucceeded !== undefined ? (
-                      <span className={`px-2 py-1 text-xs font-semibold rounded ${result.preventionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
-                        {result.preventionSucceeded ? 'PASS' : 'FAIL'}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{result?.riskScore || '-'}</td>
-                  <td className="px-4 py-3">
-                    {result ? (
-                      <span className={`px-2 py-1 text-xs font-semibold rounded ${getResultBadge(result.passed)}`}>
-                        {result.passed ? 'PASS' : 'FAIL'}
-                      </span>
-                    ) : '-'}
-                  </td>
-                </tr>
-              )
-            })}
+            {currentTestRun?.results.map((result, index) => (
+              <tr key={`${result.testId}-${index}`} className="hover:bg-dark-700">
+                <td className="px-4 py-3 text-sm text-white">{result.testName}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${getExpectedBadge(result.expectedType)}`}>
+                    {result.expectedType}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-300">{result.expectedAction}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${getExpectedBadge(result.actualType)}`}>
+                    {result.actualType}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-300">{result.actualAction}</td>
+                <td className="px-4 py-3 text-sm text-gray-300">{result.evidence?.actualDetectors?.join(', ') || '-'}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${result.detectionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
+                    {result.detectionSucceeded ? 'PASS' : 'FAIL'}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${result.preventionSucceeded ? 'bg-success-500/10 text-success-500' : 'bg-danger-500/10 text-danger-500'}`}>
+                    {result.preventionSucceeded ? 'PASS' : 'FAIL'}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-300">{result.riskScore || '-'}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-1 text-xs font-semibold rounded ${getResultBadge(result.passed)}`}>
+                    {result.passed ? 'PASS' : 'FAIL'}
+                  </span>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
