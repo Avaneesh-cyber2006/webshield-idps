@@ -71,11 +71,19 @@ const TestLab = () => {
         
         if (isAttackTest && isIpsMode && testRunId) {
           try {
-            await api.post(`/test-lab/cleanup/${testRunId}`)
-            console.log(`Per-test cleanup completed for ${config.testId}`)
+            const cleanupResponse = await api.post(`/test-lab/cleanup-block/${testRunId}`, { testId: config.testId })
+            console.log(`Per-test cleanup completed for ${config.testId}:`, cleanupResponse.data)
+            
+            // Verify the TestRun is still RUNNING (not CLEANED_UP)
+            if (cleanupResponse.data.testRunStatus !== 'RUNNING') {
+              console.error(`Per-test cleanup incorrectly marked TestRun as ${cleanupResponse.data.testRunStatus}`)
+              throw new Error('Per-test cleanup should keep TestRun in RUNNING state')
+            }
           } catch (cleanupError) {
             console.error(`Per-test cleanup failed for ${config.testId}:`, cleanupError)
-            // Continue anyway - final cleanup will handle remaining blocks
+            // Per-test cleanup failure is critical - stop the test suite
+            alert(`Per-test cleanup failed for ${config.testId}. Test suite cannot continue safely.`)
+            return
           }
         }
       }

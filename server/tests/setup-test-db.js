@@ -1,6 +1,7 @@
 /**
  * Test Database Setup
  * Creates and initializes an isolated test database for integration tests
+ * MUST be imported BEFORE importing the application or Prisma client
  */
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -27,17 +28,18 @@ if (!fs.existsSync(DEMO_DB_PATH)) {
 
 console.log('✓ Demo database verified and protected');
 
-// Set environment variable for test database
+// Set environment variable for test database BEFORE any Prisma client is created
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'file:./prisma/test.db';
 
-console.log('✓ Test database path configured');
+console.log('✓ Test database path configured:', process.env.DATABASE_URL);
 
-// Apply migrations to test database
+// Apply migrations to test database WITHOUT running seed
 console.log('Applying migrations to test database...');
 try {
   execSync('npx prisma migrate deploy', {
     cwd: path.join(__dirname, '..'),
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
   });
   console.log('✓ Test database migrations applied');
 } catch (error) {
@@ -45,4 +47,32 @@ try {
   process.exit(1);
 }
 
+// Run seed on test database only
+console.log('Seeding test database...');
+try {
+  execSync('node prisma/seed.js', {
+    cwd: path.join(__dirname, '..'),
+    stdio: 'inherit',
+    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+  });
+  console.log('✓ Test database seeded');
+} catch (error) {
+  console.error('Failed to seed test database:', error);
+  process.exit(1);
+}
+
+// Verify the test database exists
+if (!fs.existsSync(TEST_DB_PATH)) {
+  console.error('ERROR: Test database was not created at:', TEST_DB_PATH);
+  process.exit(1);
+}
+
+console.log('✓ Test database verified at:', TEST_DB_PATH);
 console.log('✓ Test database setup complete');
+
+// Export the resolved database path for verification
+module.exports = {
+  TEST_DB_PATH,
+  DEMO_DB_PATH,
+  DATABASE_URL: process.env.DATABASE_URL
+};

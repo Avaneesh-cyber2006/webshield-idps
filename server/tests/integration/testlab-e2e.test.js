@@ -1,3 +1,6 @@
+// Setup isolated test database BEFORE importing application
+const setupTestDb = require('../setup-test-db');
+
 const request = require('supertest');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -7,10 +10,8 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { getInspector } = require('../../src/middleware/idps');
 
-// Setup isolated test database
-require('../setup-test-db');
-
 console.log('Running Test Lab end-to-end integration tests...');
+console.log('Using database:', setupTestDb.DATABASE_URL);
 
 async function setupTestServer() {
   const server = http.createServer(app);

@@ -1,12 +1,13 @@
+// Setup isolated test database BEFORE importing application
+const setupTestDb = require('../setup-test-db');
+
 const assert = require('assert')
 const request = require('supertest')
 const { app } = require('../../src/app')
 
-// Setup isolated test database
-require('../setup-test-db');
-
 async function runApiTests() {
   console.log('Running API integration tests...')
+  console.log('Using database:', setupTestDb.DATABASE_URL)
 
   // Test 1: Health check
   const response1 = await request(app).get('/health')

@@ -802,11 +802,18 @@ async function getTestConfig(req, res) {
  */
 async function createTestRun(req, res) {
   try {
-    // Get current system mode
-    const modeSetting = await prisma.systemSetting.findUnique({
-      where: { key: 'idps_mode' }
-    });
-    const currentMode = modeSetting ? modeSetting.value : 'IDS';
+    // Get mode from request body or use current system mode
+    const requestedMode = req.body.mode;
+    let currentMode;
+    
+    if (requestedMode && ['IDS', 'IPS', 'MONITOR'].includes(requestedMode)) {
+      currentMode = requestedMode;
+    } else {
+      const modeSetting = await prisma.systemSetting.findUnique({
+        where: { key: 'idps_mode' }
+      });
+      currentMode = modeSetting ? modeSetting.value : 'IDS';
+    }
 
     // Generate unique test-run identifier
     const runId = `RUN-${Date.now()}-${uuidv4().substring(0, 8).toUpperCase()}`;
@@ -1135,6 +1142,7 @@ async function submitBatchTestResults(req, res) {
       testRun: {
         id: testRun.id,
         mode: testRun.mode,
+        status: 'COMPLETED',
         totalTests: testRun.totalTests,
         methodology: testRun.methodology,
         results: processedResults,
@@ -1224,7 +1232,76 @@ async function getTestRun(req, res) {
 }
 
 /**
- * Clean up blocks created during a test run
+ * Clean up blocks for a specific test (per-test cleanup)
+ * Removes only lab-owned temporary blocks without changing TestRun status
+ */
+async function cleanupTestBlock(req, res) {
+  try {
+    const { testRunId } = req.params;
+    const { testId } = req.body;
+
+    // Verify test run exists and is in RUNNING state
+    const testRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
+    });
+
+    if (!testRun) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test run not found'
+      });
+    }
+
+    if (testRun.status !== 'RUNNING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Test run is not in RUNNING state for per-test cleanup'
+      });
+    }
+
+    // Clean up blocks owned by this test run
+    const blockedSources = await prisma.blockedSource.findMany({
+      where: {
+        testRunId: testRunId
+      }
+    });
+
+    let cleanedCount = 0;
+    for (const blockedSource of blockedSources) {
+      await prisma.blockedSource.delete({
+        where: { id: blockedSource.id }
+      });
+      cleanedCount++;
+    }
+
+    // DO NOT update TestRun status - keep it RUNNING for subsequent tests
+    // Reset detector state for the source IP to allow fresh detection
+    if (cleanedCount > 0) {
+      const inspector = require('../middleware/idps').getInspector();
+      if (inspector && inspector.detectors && inspector.detectors.clearState) {
+        for (const blockedSource of blockedSources) {
+          inspector.detectors.clearState(blockedSource.sourceIp);
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Cleaned up ${cleanedCount} temporary blocks for test`,
+      cleanedCount,
+      testRunStatus: testRun.status
+    });
+  } catch (error) {
+    console.error('Cleanup test block error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to cleanup test block'
+    });
+  }
+}
+
+/**
+ * Clean up blocks created during a test run (final cleanup)
  */
 async function cleanupTestRun(req, res) {
   try {
@@ -1289,5 +1366,6 @@ module.exports = {
   getTestConfig,
   createTestRun,
   submitBatchTestResults,
+  cleanupTestBlock,
   cleanupTestRun
 };
