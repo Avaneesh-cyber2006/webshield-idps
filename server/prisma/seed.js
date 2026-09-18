@@ -1,7 +1,14 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
-const prisma = new PrismaClient();
+// Use DATABASE_URL from environment if set, otherwise default
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL || 'file:./dev.db'
+    }
+  }
+});
 
 async function main() {
   console.log('Starting seed...');

@@ -834,6 +834,7 @@ async function createTestRun(req, res) {
         id: testRun.id,
         runId: runId,
         mode: testRun.mode,
+        status: testRun.status,
         createdAt: testRun.createdAt
       }
     });
@@ -842,6 +843,56 @@ async function createTestRun(req, res) {
     res.status(500).json({
       success: false,
       message: 'Failed to create test run'
+    });
+  }
+}
+
+/**
+ * Start a TestRun - transition from CREATED to RUNNING
+ */
+async function startTestRun(req, res) {
+  try {
+    const { testRunId } = req.params;
+
+    // Verify test run exists and is in CREATED state
+    const testRun = await prisma.testRun.findUnique({
+      where: { id: testRunId }
+    });
+
+    if (!testRun) {
+      return res.status(404).json({
+        success: false,
+        message: 'Test run not found'
+      });
+    }
+
+    if (testRun.status !== 'CREATED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Test run is not in CREATED state'
+      });
+    }
+
+    // Transition to RUNNING
+    const updatedTestRun = await prisma.testRun.update({
+      where: { id: testRunId },
+      data: { status: 'RUNNING' }
+    });
+
+    res.json({
+      success: true,
+      testRun: {
+        id: updatedTestRun.id,
+        runId: updatedTestRun.runId,
+        mode: updatedTestRun.mode,
+        status: updatedTestRun.status
+      }
+    });
+  } catch (error) {
+    console.error('Start test run error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to start test run'
     });
   }
 }
@@ -1079,7 +1130,12 @@ async function submitBatchTestResults(req, res) {
       // Determine if test passed
       const typeMatch = actualType === test.expectedType;
       const actionMatch = actualAction === expectedAction;
-      const passed = typeMatch && actionMatch && !error;
+      
+      // For attack-specific tests, detectorMatch is mandatory
+      const detectorRequired = test.expectedType === 'ATTACK';
+      const detectorValid = !detectorRequired || (evidence.detectorMatch === true);
+      
+      const passed = typeMatch && actionMatch && detectorValid && !error;
 
       // Create test result
       const testResult = await prisma.testResult.create({
@@ -1108,7 +1164,12 @@ async function submitBatchTestResults(req, res) {
         riskScore,
         passed,
         requestId,
-        evidence,
+        evidence: {
+          ...evidence,
+          detectorMatch: evidence.detectorMatch || false,
+          expectedDetector: evidence.expectedDetector || null,
+          actualDetectors: evidence.actualDetectors || []
+        },
         detectionSucceeded,
         preventionSucceeded
       });
@@ -1365,6 +1426,7 @@ module.exports = {
   getTestRun,
   getTestConfig,
   createTestRun,
+  startTestRun,
   submitBatchTestResults,
   cleanupTestBlock,
   cleanupTestRun

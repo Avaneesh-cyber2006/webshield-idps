@@ -9,16 +9,16 @@ const prisma = require('../../src/config/database');
 console.log('Running sequential IPS tests with per-test cleanup...');
 console.log('Using database:', setupTestDb.DATABASE_URL);
 
-// Set mode to IDS in database before importing app
-async function setIDSMode() {
+// Set mode to IPS in database before importing app
+async function setIPSMode() {
   await prisma.systemSetting.upsert({
     where: { key: 'idps_mode' },
-    update: { value: 'IDS' },
-    create: { key: 'idps_mode', value: 'IDS' }
+    update: { value: 'IPS' },
+    create: { key: 'idps_mode', value: 'IPS' }
   });
 }
 
-setIDSMode().then(() => {
+setIPSMode().then(() => {
   const { app, initializeIDPS } = require('../../src/app');
   const { getInspector } = require('../../src/middleware/idps');
 
@@ -59,7 +59,8 @@ setIDSMode().then(() => {
     await new Promise(resolve => setTimeout(resolve, 200));
 
     const inspector = getInspector();
-    inspector.setMode('IDS');
+    // Keep IPS mode throughout the test
+    inspector.setMode('IPS');
 
     return { server, port: server.address().port };
   }
@@ -72,7 +73,7 @@ setIDSMode().then(() => {
     try {
       console.log('\n=== Sequential IPS Tests with Per-Test Cleanup ===');
 
-      // Step 1: Authenticate as admin (in IDS mode to avoid blocking login)
+      // Step 1: Authenticate as admin
       console.log('1. Authenticating as administrator...');
       const tokenCookie = await getAdminToken(port);
       console.log('✓ Administrator authenticated');
@@ -84,9 +85,8 @@ setIDSMode().then(() => {
       });
       console.log('✓ Cleaned up existing lab blocks');
 
-      // Step 2: Create TestRun in IPS mode (temporarily switch to IDS for this request)
-      inspector.setMode('IDS');
-      console.log('2. Creating TestRun...');
+      // Step 2: Create TestRun in IPS mode
+      console.log('2. Creating TestRun in IPS mode...');
       const createRunResponse = await request(baseURL)
         .post('/api/test-lab/create-run')
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
@@ -103,23 +103,25 @@ setIDSMode().then(() => {
       console.log('✓ TestRun created:', testRunId);
       console.log('  Initial status:', createRunResponse.body.testRun.status);
 
-      // Update TestRun status to RUNNING
-      await prisma.testRun.update({
-        where: { id: testRunId },
-        data: { status: 'RUNNING' }
-      });
-      console.log('✓ TestRun status set to RUNNING');
+      // Step 3: Start TestRun (CREATED → RUNNING)
+      console.log('3. Starting TestRun (CREATED → RUNNING)...');
+      const startRunResponse = await request(baseURL)
+        .post(`/api/test-lab/start/${testRunId}`)
+        .set('Cookie', tokenCookie);
 
-      // Switch back to IPS mode for the actual attack tests
-      await prisma.systemSetting.update({
-        where: { key: 'idps_mode' },
-        data: { value: 'IPS' }
-      });
-      inspector.setMode('IPS');
-      console.log('✓ Switched to IPS mode');
+      if (startRunResponse.status !== 200) {
+        console.error('TestRun start failed with status:', startRunResponse.status);
+        console.error('Response body:', startRunResponse.body);
+        throw new Error('TestRun start failed');
+      }
 
-      // Step 3: Execute SQL injection (should create a block)
-      console.log('3. Executing SQL injection in IPS mode...');
+      console.log('✓ TestRun started:', startRunResponse.body.testRun.status);
+      if (startRunResponse.body.testRun.status !== 'RUNNING') {
+        throw new Error('TestRun should be RUNNING after start, got: ' + startRunResponse.body.testRun.status);
+      }
+
+      // Step 4: Execute SQL injection (should create a block)
+      console.log('4. Executing SQL injection in IPS mode...');
       const sqliResponse = await request(baseURL)
         .get('/api/demo/search?query=' + encodeURIComponent("' OR '1'='1"))
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
@@ -127,10 +129,17 @@ setIDSMode().then(() => {
         .set('Cookie', tokenCookie);
 
       if (sqliResponse.status !== 403) {
-        throw new Error('SQL injection should be blocked in IPS mode');
+        throw new Error('SQL injection should be blocked in IPS mode, got: ' + sqliResponse.status);
       }
 
       console.log('✓ SQL injection blocked with 403');
+
+      // Extract actual request ID from response header
+      const sqliRequestId = sqliResponse.headers['x-request-id'];
+      if (!sqliRequestId) {
+        throw new Error('SQL injection response missing X-Request-ID header');
+      }
+      console.log('✓ SQL injection request ID:', sqliRequestId);
 
       // Verify block was created
       const blockAfterSqli = await prisma.blockedSource.findFirst({
@@ -143,16 +152,8 @@ setIDSMode().then(() => {
 
       console.log('✓ Block created with testRun ownership');
 
-      // Switch back to IDS mode for cleanup operations
-      inspector.setMode('IDS');
-      await prisma.systemSetting.update({
-        where: { key: 'idps_mode' },
-        data: { value: 'IDS' }
-      });
-      console.log('✓ Switched to IDS mode for per-test cleanup');
-
-      // Step 4: Per-test cleanup (should remove block but keep TestRun RUNNING)
-      console.log('4. Performing per-test cleanup...');
+      // Step 5: Per-test cleanup (should remove block but keep TestRun RUNNING)
+      console.log('5. Performing per-test cleanup...');
       const perTestCleanupResponse = await request(baseURL)
         .post(`/api/test-lab/cleanup-block/${testRunId}`)
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
@@ -187,36 +188,37 @@ setIDSMode().then(() => {
 
       console.log('✓ Block removed by per-test cleanup');
 
-      // Switch back to IPS mode for the XSS test
-      await prisma.systemSetting.update({
-        where: { key: 'idps_mode' },
-        data: { value: 'IPS' }
-      });
-      inspector.setMode('IPS');
-      console.log('✓ Switched back to IPS mode for XSS test');
+      // Clear rate limit state to avoid false positives on next test
+      const prevention = inspector.prevention;
+      if (prevention && prevention.clearRateLimit) {
+        prevention.clearRateLimit('127.0.0.1');
+      }
+      const detectors = inspector.detectors;
+      if (detectors && detectors.clearState) {
+        detectors.clearState('127.0.0.1');
+      }
+      console.log('✓ Rate limit state cleared');
 
-      // Step 5: Execute XSS test (should succeed because block was removed)
-      console.log('5. Executing XSS test after cleanup...');
-      const xssResponse = await request(baseURL)
-        .get('/api/demo/search?query=' + encodeURIComponent('<script>alert(1)</script>'))
+      // Step 6: Execute normal request (should succeed because block was removed)
+      console.log('6. Executing normal request after cleanup...');
+      const normalResponse = await request(baseURL)
+        .get('/api/demo/public')
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
         .set('X-Test-Run-ID', testRunId)
         .set('Cookie', tokenCookie);
 
-      // XSS might be blocked (403) or allowed (200) depending on detection
-      // The important thing is that it's not blocked by the previous SQL injection block
-      console.log('✓ XSS test executed with status:', xssResponse.status);
+      // Normal request should be allowed
+      console.log('✓ Normal request executed with status:', normalResponse.status);
 
-      // Switch back to IDS mode for submission
-      inspector.setMode('IDS');
-      await prisma.systemSetting.update({
-        where: { key: 'idps_mode' },
-        data: { value: 'IDS' }
-      });
-      console.log('✓ Switched to IDS mode for submission');
+      // Extract actual request ID from response header
+      const normalRequestId = normalResponse.headers['x-request-id'];
+      if (!normalRequestId) {
+        throw new Error('Normal response missing X-Request-ID header');
+      }
+      console.log('✓ Normal request ID:', normalRequestId);
 
-      // Step 6: Submit batch observations
-      console.log('6. Submitting batch observations...');
+      // Step 7: Submit batch observations with actual request IDs
+      console.log('7. Submitting batch observations with actual request IDs...');
       const submitResponse = await request(baseURL)
         .post('/api/test-lab/submit')
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
@@ -226,15 +228,15 @@ setIDSMode().then(() => {
           results: [
             {
               testId: 'sql_injection',
-              requestId: 'REQ-TEST-1',
+              requestId: sqliRequestId,
               httpStatus: 403,
               success: false
             },
             {
-              testId: 'xss',
-              requestId: 'REQ-TEST-2',
-              httpStatus: xssResponse.status,
-              success: xssResponse.status === 200
+              testId: 'normal_request',
+              requestId: normalRequestId,
+              httpStatus: normalResponse.status,
+              success: normalResponse.status === 200
             }
           ]
         });
@@ -253,16 +255,42 @@ setIDSMode().then(() => {
 
       console.log('✓ TestRun status correctly set to COMPLETED');
 
-      // Switch back to IDS mode for cleanup operations
-      inspector.setMode('IDS');
-      await prisma.systemSetting.update({
-        where: { key: 'idps_mode' },
-        data: { value: 'IDS' }
-      });
-      console.log('✓ Switched back to IDS mode for cleanup');
+      // Verify results
+      const results = submitResponse.body.testRun.results;
+      console.log('  Results:', JSON.stringify(results, null, 2));
 
-      // Step 7: Final cleanup (should mark TestRun as CLEANED_UP)
-      console.log('7. Performing final cleanup...');
+      // Verify detectorMatch for attack tests
+      for (const result of results) {
+        if (result.expectedType === 'ATTACK' && !result.evidence.detectorMatch) {
+          console.error(`Detector category mismatch for ${result.testId}:`);
+          console.error(`  Expected detector: ${result.evidence.expectedDetector}`);
+          console.error(`  Actual detectors: ${JSON.stringify(result.evidence.actualDetectors)}`);
+          console.error(`  Evidence:`, result.evidence);
+        }
+      }
+
+      // Verify metrics
+      const metrics = submitResponse.body.testRun.metrics;
+      console.log('  Metrics:', JSON.stringify(metrics, null, 2));
+
+      if (metrics.passed !== 2) {
+        throw new Error('Expected 2 passed tests, got: ' + metrics.passed);
+      }
+      if (metrics.failed !== 0) {
+        throw new Error('Expected 0 failed tests, got: ' + metrics.failed);
+      }
+      if (metrics.executionErrors !== 0) {
+        throw new Error('Expected 0 execution errors, got: ' + metrics.executionErrors);
+      }
+      if (metrics.unevaluated !== 0) {
+        throw new Error('Expected 0 unevaluated samples, got: ' + metrics.unevaluated);
+      }
+
+      console.log('✓ All metrics verified correctly');
+      console.log('✓ Detector categories validated');
+
+      // Step 8: Final cleanup (should mark TestRun as CLEANED_UP)
+      console.log('8. Performing final cleanup...');
       const finalCleanupResponse = await request(baseURL)
         .post(`/api/test-lab/cleanup/${testRunId}`)
         .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
@@ -289,9 +317,11 @@ setIDSMode().then(() => {
       console.log('✓ Per-test cleanup preserves TestRun RUNNING state');
       console.log('✓ Multiple attack tests can execute sequentially in IPS mode');
       console.log('✓ Final cleanup marks TestRun as CLEANED_UP');
+      console.log('✓ Actual request IDs used for evidence correlation');
+      console.log('✓ System remained in IPS mode throughout');
 
     } finally {
-      // Reset to IDS mode
+      // Reset to IDS mode for cleanup
       inspector.setMode('IDS');
       await prisma.systemSetting.update({
         where: { key: 'idps_mode' },
@@ -311,6 +341,6 @@ setIDSMode().then(() => {
       process.exit(1);
     });
 }).catch((error) => {
-  console.error('Failed to set IDS mode:', error);
+  console.error('Failed to set IPS mode:', error);
   process.exit(1);
 });

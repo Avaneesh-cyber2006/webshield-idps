@@ -50,10 +50,14 @@ try {
 // Run seed on test database only
 console.log('Seeding test database...');
 try {
+  // Ensure DATABASE_URL is set for the seed command
+  const seedEnv = { ...process.env, DATABASE_URL: process.env.DATABASE_URL };
+  console.log('Seed DATABASE_URL:', seedEnv.DATABASE_URL);
+  
   execSync('node prisma/seed.js', {
     cwd: path.join(__dirname, '..'),
     stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
+    env: seedEnv
   });
   console.log('✓ Test database seeded');
 } catch (error) {

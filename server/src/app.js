@@ -52,8 +52,8 @@ app.use('/api/auth', idpsMiddleware, authRoutes);
 app.use('/api/demo', idpsMiddleware, demoRoutes);
 app.use('/api/admin', idpsMiddleware, adminRoutes);
 
-// Test Lab cleanup bypasses IDPS (must be registered before IDPS-protected router)
-app.use('/api/test-lab', testLabRoutes.cleanupRouter);
+// Test Lab admin operations bypass IDPS (must be registered before IDPS-protected router)
+app.use('/api/test-lab', testLabRoutes.adminRouter);
 app.use('/api/test-lab', idpsMiddleware, testLabRoutes);
 
 // Public API route (not protected by IDPS for testing)
