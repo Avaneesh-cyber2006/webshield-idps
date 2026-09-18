@@ -1,13 +1,15 @@
 /**
  * Database Isolation Verification Test
- * Creates a file hash of the demo database, runs test database setup,
- * and verifies the hash hasn't changed to prove the demo database is not modified.
+ * Backs up the demo database, runs the entire integration suite,
+ * and verifies the demo database hash hasn't changed.
  */
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
 const DEMO_DB_PATH = path.join(__dirname, '../../prisma/dev.db');
+const DEMO_BACKUP_PATH = path.join(__dirname, '../../prisma/dev.db.backup');
 const TEST_DB_PATH = path.join(__dirname, '../../prisma/test.db');
 
 function calculateFileHash(filePath) {
@@ -23,8 +25,18 @@ function calculateFileHash(filePath) {
 async function runDatabaseIsolationTest() {
   console.log('=== Database Isolation Verification Test ===\n');
 
-  // Step 1: Calculate initial hash of demo database
-  console.log('Step 1: Calculating initial hash of demo database...');
+  // Step 1: Back up demonstration database
+  console.log('Step 1: Backing up demonstration database...');
+  if (fs.existsSync(DEMO_DB_PATH)) {
+    fs.copyFileSync(DEMO_DB_PATH, DEMO_BACKUP_PATH);
+    console.log('✓ Demo database backed up to:', DEMO_BACKUP_PATH);
+  } else {
+    console.error('ERROR: Demo database does not exist at:', DEMO_DB_PATH);
+    process.exit(1);
+  }
+
+  // Step 2: Calculate initial hash of demo database
+  console.log('\nStep 2: Calculating initial hash of demo database...');
   const initialDemoHash = calculateFileHash(DEMO_DB_PATH);
   
   if (!initialDemoHash) {
@@ -34,8 +46,8 @@ async function runDatabaseIsolationTest() {
   
   console.log('✓ Demo database hash calculated:', initialDemoHash.substring(0, 16) + '...');
 
-  // Step 2: Verify resolved database path is not the demo database
-  console.log('\nStep 2: Verifying resolved database path is not demo database...');
+  // Step 3: Verify resolved database path is not the demo database
+  console.log('\nStep 3: Verifying resolved database path is not demo database...');
   // Set DATABASE_URL to test.db before checking resolved path
   process.env.DATABASE_URL = 'file:./test.db';
   const resolvedDbPath = path.resolve(__dirname, '../../prisma', process.env.DATABASE_URL?.replace('file:./', '') || 'dev.db');
@@ -52,8 +64,8 @@ async function runDatabaseIsolationTest() {
   console.log('✓ Demo database path:', path.resolve(DEMO_DB_PATH));
   console.log('✓ Paths are different, safe to proceed');
 
-  // Step 3: Run test database setup
-  console.log('\nStep 3: Setting up isolated test database...');
+  // Step 4: Run test database setup
+  console.log('\nStep 4: Setting up isolated test database...');
   process.env.DATABASE_URL = 'file:./test.db';
 
   try {
@@ -84,28 +96,77 @@ async function runDatabaseIsolationTest() {
     process.exit(1);
   }
 
-  // Step 4: Verify demo database hash is unchanged after setup
-  console.log('\nStep 4: Verifying demo database hash is unchanged after test database setup...');
+  // Step 5: Run the entire integration suite
+  console.log('\nStep 5: Running the entire integration suite...');
+  console.log('This will run all integration tests against the isolated test database');
+  
+  try {
+    // Run all integration tests (unit tests don't touch the database)
+    const integrationTests = [
+      'node tests/integration/api.test.js',
+      'node tests/integration/idps.test.js',
+      'node tests/integration/ip-spoofing.test.js',
+      'node tests/integration/auth-abuse.test.js',
+      'node tests/integration/block-ownership.test.js',
+      'node tests/integration/rate-limit.test.js',
+      'node tests/integration/sequential-ips-tests.test.js',
+      'node tests/integration/testlab-e2e.test.js'
+    ];
+    
+    for (const test of integrationTests) {
+      console.log(`\nRunning: ${test}`);
+      execSync(test, {
+        cwd: path.join(__dirname, '../..'),
+        stdio: 'inherit',
+        env: { ...process.env, DATABASE_URL: 'file:./test.db' }
+      });
+      console.log(`✓ ${test} passed`);
+    }
+    
+    console.log('\n✓ All integration tests passed');
+    
+  } catch (error) {
+    console.error('Integration suite failed:', error);
+    process.exit(1);
+  }
+
+  // Step 6: Disconnect Prisma clients and close test servers
+  console.log('\nStep 6: Disconnecting Prisma clients...');
+  // Clear module cache to ensure connections are closed
+  delete require.cache[require.resolve('../../src/config/database')];
+  console.log('✓ Prisma client cache cleared');
+
+  // Step 7: Verify demo database hash is unchanged after full suite
+  console.log('\nStep 7: Verifying demo database hash is unchanged after full integration suite...');
   const finalDemoHash = calculateFileHash(DEMO_DB_PATH);
   
   if (!finalDemoHash) {
-    console.error('ERROR: Demo database was deleted during test database setup');
+    console.error('ERROR: Demo database was deleted during integration suite');
     process.exit(1);
   }
   
   if (initialDemoHash !== finalDemoHash) {
-    console.error('ERROR: Demo database hash changed during test database setup');
+    console.error('ERROR: Demo database hash changed during integration suite');
     console.error('Initial hash:', initialDemoHash);
     console.error('Final hash:', finalDemoHash);
-    console.error('This indicates the demo database was modified by test database setup');
+    console.error('This indicates the demo database was modified by integration tests');
+    console.error('This is a critical database isolation failure');
     process.exit(1);
   }
   
-  console.log('✓ Demo database hash verified unchanged after test database setup');
+  console.log('✓ Demo database hash verified unchanged after full integration suite');
   console.log('✓ Hash:', finalDemoHash.substring(0, 16) + '...');
 
-  // Step 5: Verify actual database paths
-  console.log('\nStep 5: Verifying database paths...');
+  // Step 8: Restore demo database from backup
+  console.log('\nStep 8: Restoring demo database from backup...');
+  if (fs.existsSync(DEMO_BACKUP_PATH)) {
+    fs.copyFileSync(DEMO_BACKUP_PATH, DEMO_DB_PATH);
+    fs.unlinkSync(DEMO_BACKUP_PATH);
+    console.log('✓ Demo database restored from backup');
+  }
+
+  // Step 9: Verify actual database paths
+  console.log('\nStep 9: Verifying database paths...');
   console.log('Demo database path:', DEMO_DB_PATH);
   console.log('Test database path:', TEST_DB_PATH);
 
@@ -116,8 +177,8 @@ async function runDatabaseIsolationTest() {
 
   console.log('✓ Database paths are different');
 
-  // Step 6: Verify test database has seed data (expected)
-  console.log('\nStep 6: Verifying test database has seed data...');
+  // Step 10: Verify test database has seed data (expected)
+  console.log('\nStep 10: Verifying test database has seed data...');
   process.env.DATABASE_URL = 'file:./test.db';
 
   delete require.cache[require.resolve('../../src/config/database')];
@@ -134,17 +195,19 @@ async function runDatabaseIsolationTest() {
     
     console.log('✓ Test database has seed data (as expected)');
     
+    await testPrisma.$disconnect();
+    
   } catch (error) {
     console.error('Failed to verify test database seed data:', error);
     process.exit(1);
   }
 
   console.log('\n=== Database Isolation Verification Complete ===');
-  console.log('✓ Demo database protected and unchanged (hash verified after test database setup)');
+  console.log('✓ Demo database protected and unchanged (hash verified after full integration suite)');
   console.log('✓ Test database isolated and fresh');
   console.log('✓ Database paths verified distinct');
+  console.log('✓ All integration tests passed without modifying demo database');
   console.log('\nDatabase isolation is working correctly.');
-  console.log('Note: Run npm run test:integration to execute the full integration suite separately.');
 }
 
 runDatabaseIsolationTest()
@@ -154,5 +217,12 @@ runDatabaseIsolationTest()
   })
   .catch((error) => {
     console.error('Database isolation test failed:', error);
+    
+    // Restore demo database from backup on failure
+    if (fs.existsSync(DEMO_BACKUP_PATH)) {
+      fs.copyFileSync(DEMO_BACKUP_PATH, DEMO_DB_PATH);
+      fs.unlinkSync(DEMO_BACKUP_PATH);
+    }
+    
     process.exit(1);
   });
