@@ -20,9 +20,16 @@ build/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.db-journal
-prisma/dev.db
-prisma/dev.db-journal
+prisma/*.db
+prisma/*.db-shm
+prisma/*.db-wal
+prisma/*.db-journal
+
+# Database backups
+*.backup
 
 # Logs
 logs/

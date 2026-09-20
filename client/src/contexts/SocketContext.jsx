@@ -8,9 +8,8 @@ export const SocketProvider = ({ children }) => {
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    const socketUrl = process.env.NODE_ENV === 'production'
-      ? window.location.origin
-      : 'http://localhost:5000'
+    // Use relative URL for same-origin access (works on localhost and LAN)
+    const socketUrl = window.location.origin
 
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],

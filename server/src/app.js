@@ -22,9 +22,7 @@ app.use(helmet({
 }));
 
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? false // Same origin in production
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: '*', // Allow all origins for LAN demonstration
   credentials: true
 }));
 

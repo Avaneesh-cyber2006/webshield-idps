@@ -49,7 +49,7 @@ async function runDatabaseIsolationTest() {
   // Step 3: Verify resolved database path is not the demo database
   console.log('\nStep 3: Verifying resolved database path is not demo database...');
   // Set DATABASE_URL to test.db before checking resolved path
-  process.env.DATABASE_URL = 'file:./test.db';
+  process.env.DATABASE_URL = 'file:./prisma/test.db';
   const resolvedDbPath = path.resolve(__dirname, '../../prisma', process.env.DATABASE_URL?.replace('file:./', '') || 'dev.db');
   
   if (resolvedDbPath === path.resolve(DEMO_DB_PATH)) {
@@ -157,13 +157,12 @@ async function runDatabaseIsolationTest() {
   console.log('✓ Demo database hash verified unchanged after full integration suite');
   console.log('✓ Hash:', finalDemoHash.substring(0, 16) + '...');
 
-  // Step 8: Restore demo database from backup
-  console.log('\nStep 8: Restoring demo database from backup...');
-  if (fs.existsSync(DEMO_BACKUP_PATH)) {
-    fs.copyFileSync(DEMO_BACKUP_PATH, DEMO_DB_PATH);
-    fs.unlinkSync(DEMO_BACKUP_PATH);
-    console.log('✓ Demo database restored from backup');
-  }
+  // Step 8: Do NOT automatically restore demo database
+  console.log('\nStep 8: Demo database hash verification complete');
+  console.log('✓ Demo database remains unchanged (hash verified)');
+  console.log('✓ No automatic restore performed');
+  console.log('Backup preserved at:', DEMO_BACKUP_PATH);
+  console.log('Manual restore available if needed: copy', DEMO_BACKUP_PATH, 'to', DEMO_DB_PATH);
 
   // Step 9: Verify actual database paths
   console.log('\nStep 9: Verifying database paths...');
@@ -217,12 +216,7 @@ runDatabaseIsolationTest()
   })
   .catch((error) => {
     console.error('Database isolation test failed:', error);
-    
-    // Restore demo database from backup on failure
-    if (fs.existsSync(DEMO_BACKUP_PATH)) {
-      fs.copyFileSync(DEMO_BACKUP_PATH, DEMO_DB_PATH);
-      fs.unlinkSync(DEMO_BACKUP_PATH);
-    }
-    
+    console.error('Backup preserved at:', DEMO_BACKUP_PATH);
+    console.error('Manual investigation required');
     process.exit(1);
   });

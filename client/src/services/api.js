@@ -1,8 +1,7 @@
 import axios from 'axios'
 
-const API_URL = process.env.NODE_ENV === 'production'
-  ? '/api'
-  : 'http://localhost:5000/api'
+// Use relative URLs for same-origin access (works on localhost and LAN)
+const API_URL = '/api'
 
 const api = axios.create({
   baseURL: API_URL,

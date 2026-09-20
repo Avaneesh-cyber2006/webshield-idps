@@ -21,18 +21,18 @@ async function runVerification() {
     process.exit(1);
   }
 
-  // Step 2: Set DATABASE_URL to test database
+  // Step 2: Set DATABASE_URL to test database (correct path - relative to server directory)
   process.env.DATABASE_URL = 'file:./prisma/test.db';
   console.log('\nStep 2: Set DATABASE_URL to:', process.env.DATABASE_URL);
 
-  // Step 3: Delete test database if it exists
+  // Delete test database if it exists
   const TEST_DB_PATH = path.join(__dirname, '../prisma/test.db');
   if (fs.existsSync(TEST_DB_PATH)) {
     fs.unlinkSync(TEST_DB_PATH);
     console.log('✓ Deleted existing test database');
   }
 
-  // Step 4: Import Prisma with DATABASE_URL set
+  // Step 3: Import Prisma with DATABASE_URL set
   console.log('\nStep 3: Importing Prisma Client with DATABASE_URL set...');
   const { PrismaClient } = require('@prisma/client');
   const prisma = new PrismaClient({
@@ -43,9 +43,13 @@ async function runVerification() {
     }
   });
   
+  // Verify actual resolved path
+  const TEST_DB_RESOLVED = path.resolve(__dirname, '../prisma/test.db');
+  console.log('Resolved test database path:', TEST_DB_RESOLVED);
+  
   let demoPrisma = null;
 
-  // Step 5: Create a sentinel in the test database
+  // Step 4: Create a sentinel in the test database
   console.log('\nStep 4: Creating sentinel record in database...');
   try {
     // First, run migrations to create the schema
@@ -67,12 +71,15 @@ async function runVerification() {
     });
     console.log('✓ Sentinel created with ID:', sentinel.id);
     
-    // Step 6: Verify demo database does NOT have the sentinel
+    // Step 5: Verify demo database does NOT have the sentinel
     console.log('\nStep 5: Verifying demo database does NOT have the sentinel...');
+    const DEMO_DB_RESOLVED = path.resolve(__dirname, '../prisma/dev.db');
+    console.log('Resolved demo database path:', DEMO_DB_RESOLVED);
+    
     const demoPrisma = new PrismaClient({
       datasources: {
         db: {
-          url: 'file:./prisma/dev.db'
+          url: 'file:./dev.db'
         }
       }
     });
@@ -99,7 +106,7 @@ async function runVerification() {
     
     console.log('✓ Sentinel NOT found in demo database (correct)');
     
-    // Step 7: Verify test database DOES have the sentinel
+    // Step 6: Verify test database DOES have the sentinel
     console.log('\nStep 6: Verifying test database HAS the sentinel...');
     const testSentinel = await prisma.systemSetting.findUnique({
       where: { key: 'CONNECTION_TEST_SENTINEL' }
@@ -114,7 +121,7 @@ async function runVerification() {
     console.log('✓ Sentinel found in test database (correct)');
     console.log('✓ Sentinel value:', testSentinel.value);
     
-    // Step 8: Cleanup
+    // Step 7: Cleanup
     await prisma.$disconnect();
     try {
       await demoPrisma.$disconnect();

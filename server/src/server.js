@@ -5,7 +5,7 @@ const { app, initializeIDPS } = require('./app');
 const prisma = require('./config/database');
 const setupSocketIO = require('./sockets');
 
-const PORT = process.env.NODE_ENV === 'production' ? 8080 : (process.env.PORT || 5000);
+const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Create HTTP server
@@ -14,9 +14,7 @@ const server = http.createServer(app);
 // Setup Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production'
-      ? false
-      : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: '*', // Allow all origins for LAN demonstration
     credentials: true
   }
 });
