@@ -1,15 +1,36 @@
 import React, { useState, useEffect } from 'react'
 import { Calendar, Search, Filter } from 'lucide-react'
 import api from '../../services/api'
+import { useSocket } from '../../contexts/SocketContext'
 
 const ThreatEvents = () => {
   const [events, setEvents] = useState([])
   const [filter, setFilter] = useState({ severity: '', category: '', source: '', date: '' })
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const { socket, connected } = useSocket()
 
   useEffect(() => {
     fetchEvents()
-  }, [])
+
+    // Set up automatic polling every 2 seconds
+    const pollInterval = setInterval(() => {
+      fetchEvents()
+    }, 2000)
+
+    // Set up Socket.IO listener for real-time updates
+    if (socket && connected) {
+      socket.on('security:new', () => {
+        fetchEvents()
+      })
+    }
+
+    return () => {
+      clearInterval(pollInterval)
+      if (socket) {
+        socket.off('security:new')
+      }
+    }
+  }, [socket, connected, filter])
 
   const fetchEvents = async () => {
     try {

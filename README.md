@@ -2,11 +2,40 @@
 
 A college demonstration project showcasing Intrusion Detection System (IDS) and Intrusion Prevention System (IPS) capabilities using a three-computer LAN setup.
 
+## Table of Contents
+
+- [What is WebShield IDPS?](#what-is-webshield-idps)
+- [Three-Computer Architecture](#three-computer-architecture)
+- [Technologies Used](#technologies-used)
+- [Prerequisites](#prerequisites)
+- [Clone the Project from GitHub](#clone-the-project-from-github)
+- [Host Computer Installation](#host-computer-installation)
+- [Environment Configuration](#environment-configuration)
+- [LAN Network Configuration](#lan-network-configuration)
+- [Start WebShield on the Host](#start-webshield-on-the-host)
+- [Attacker Laptop A Setup](#attacker-laptop-a-setup)
+- [Attacker Laptop B Setup](#attacker-laptop-b-setup)
+- [Complete IDS Demonstration](#complete-ids-demonstration)
+- [Complete IPS Demonstration](#complete-ips-demonstration)
+- [Automatic Dashboard Updates](#automatic-dashboard-updates)
+- [Troubleshooting](#troubleshooting)
+- [Resetting Between Demonstrations](#resetting-between-demonstrations)
+- [Presentation Checklist](#presentation-checklist)
+
 ## What is WebShield IDPS?
 
 WebShield IDPS is a web application that monitors HTTP requests in real-time, detects potential attacks, and can either:
 - **IDS Mode**: Log and alert on detected attacks without blocking requests
 - **IPS Mode**: Automatically block malicious requests based on configurable risk thresholds
+
+### How It Works
+
+1. **Attack Detection**: HTTP requests are analyzed for attack patterns (SQL injection, XSS, path traversal, etc.)
+2. **Risk Scoring**: Each detected pattern contributes to a cumulative risk score
+3. **Decision Engine**: Based on the risk score and current mode (IDS/IPS), the system decides how to respond
+4. **Prevention Layer**: In IPS mode, high-risk requests are blocked before reaching the application
+5. **Event Logging**: All security events are logged with source IP, timestamp, detector category, and action taken
+6. **Administrator Dashboard**: Real-time view of security events, blocked sources, and system metrics
 
 ### Key Features
 - Real-time traffic monitoring and analysis
@@ -14,55 +43,53 @@ WebShield IDPS is a web application that monitors HTTP requests in real-time, de
 - Configurable risk scoring and prevention policies
 - Live dashboard with attack logs and blocked source management
 - Support for multiple detection modes (Monitor, IDS, IPS)
+- Automatic dashboard updates via Socket.IO
+- Manual IP blocking and unblocking
 
-## Architecture for Three-Computer Demonstration
+## Three-Computer Architecture
 
 ```
 Computer 1 (Host + Admin Dashboard)
     ↓ LAN (Wi-Fi/Hotspot)
-    ├─ Computer 2 (Attacker A)
-    └─ Computer 3 (Attacker B)
+    ├─ Computer 2 (Attacker A - SQL Injection Testing)
+    └─ Computer 3 (Attacker B - XSS Testing)
 ```
 
-- **Computer 1**: Runs the WebShield server, hosts the admin dashboard, and receives all traffic
-- **Computer 2 & 3**: Attacker computers that send test traffic to Computer 1
+- **Computer 1 (Host)**: Runs the WebShield server, SQLite database, React frontend, and administrator dashboard
+- **Computer 2 (Attacker A)**: Sends SQL injection test requests to Computer 1
+- **Computer 3 (Attacker B)**: Sends XSS test requests to Computer 1
+
+**Important**: Attacker computers must access WebShield using the host computer's LAN IP address (e.g., `http://192.168.1.100:3000`), not `localhost`.
 
 ## Technologies Used
 
-- **Backend**: Node.js, Express, Prisma ORM, SQLite
-- **Frontend**: React, Vite, Socket.IO
-- **Authentication**: JWT (JSON Web Tokens)
-- **Security**: bcrypt for password hashing
+### Backend
+- **Node.js**: JavaScript runtime
+- **Express.js**: Web application framework
+- **Socket.IO**: Real-time event-based communication
+- **Prisma ORM**: Type-safe database ORM
+- **SQLite**: File-based SQL database
+- **bcrypt**: Password hashing library
+- **JWT (jsonwebtoken)**: Token-based authentication
+- **Helmet**: Security HTTP headers
+- **CORS**: Cross-origin resource sharing
 
-## Demonstration Scenarios
-
-### IDS Mode Demo
-1. Administrator selects IDS mode
-2. Computer 2 sends SQL injection request → Request succeeds (HTTP 200)
-3. Security event created: attack detected and logged
-4. Dashboard shows: source IP, attack type, timestamp, request ID, action (ALERT or LOG)
-5. Computer 3 sends XSS request → Same behavior
-
-### IPS Mode Demo
-1. Administrator switches to IPS mode
-2. Computer 2 sends SQL injection request → Request blocked (HTTP 403)
-3. Security event created: attack detected and prevented
-4. Dashboard shows: blocked source IP, prevention action (BLOCK or TEMP_BLOCK)
-5. Computer 3 remains operational
-6. Administrator unblocks Computer 2 → Normal access restored
-7. Computer 3 XSS request → Blocked as configured
-
-**Important:** In production mode, the application runs on a single port (3000 by default) that serves both the React frontend and the backend API. This simplifies the setup and avoids CORS issues.
-
----
+### Frontend
+- **React 18**: Component-based UI framework
+- **Vite**: Fast build tool and development server
+- **Tailwind CSS**: Utility-first CSS framework
+- **React Router**: Client-side routing
+- **Axios**: Promise-based HTTP client
+- **Lucide React**: Icon library
+- **Socket.IO Client**: Real-time bidirectional communication
 
 ## Prerequisites
 
 ### Host Computer (Computer 1)
-- Windows operating system
+- Windows 10 or Windows 11
 - [Node.js](https://nodejs.org/) (LTS version recommended)
 - [Git](https://git-scm.com/)
-- WebShield repository (cloned from GitHub)
+- WebShield repository
 - PowerShell (installed by default on Windows)
 
 ### Attacker Computers (Computer 2 & 3)
@@ -71,32 +98,28 @@ Computer 1 (Host + Admin Dashboard)
 - PowerShell (installed by default on Windows)
 - Access to the same LAN/Wi-Fi network as Computer 1
 
----
+**No additional software installation required on attacker computers.**
 
-## Host Computer Setup
-
-### Step 1: Clone the Repository
+## Clone the Project from GitHub
 
 Open PowerShell and run:
 
 ```powershell
 cd C:\Users\YourUsername\Desktop
-git clone <repository-url>
-cd IDPS
+git clone https://github.com/Avaneesh-cyber2006/webshield-idps
+cd webshield-idps
 ```
 
-Replace `<repository-url>` with the actual GitHub repository URL.
+## Host Computer Installation
 
-### Step 2: Install Dependencies
-
-#### Backend Dependencies
+### Step 1: Install Backend Dependencies
 
 ```powershell
 cd server
 npm install
 ```
 
-#### Frontend Dependencies
+### Step 2: Install Frontend Dependencies
 
 ```powershell
 cd ..\client
@@ -119,7 +142,7 @@ Edit `.env` with your preferred values (default values work for demonstration):
 
 ```env
 NODE_ENV=development
-PORT=5000
+PORT=3000
 HOST=0.0.0.0
 JWT_SECRET=webshield-demo-secret-key-2026-lab-only
 COOKIE_SECURE=false
@@ -162,18 +185,15 @@ cd ..\client
 npm run build
 ```
 
-### Step 7: Start the Application
+### Step 7: Start WebShield
 
 ```powershell
 cd ..\server
 npm start
 ```
 
-The application will start on:
-- **Development mode**: Backend on port 5000, Frontend on port 3000 (via Vite dev server)
-- **Production mode**: Single port (3000 by default) serving both backend and frontend
+The application will start on port 3000:
 
-You should see:
 ```
 ✓ Server running on http://0.0.0.0:3000
 ✓ Database connected
@@ -187,8 +207,6 @@ Open your browser and navigate to:
 http://localhost:3000
 ```
 
-In production mode, the same URL serves both the frontend and backend API.
-
 ### Step 9: Log In as Administrator
 
 - Email: `admin@webshield.local`
@@ -198,9 +216,30 @@ In production mode, the same URL serves both the frontend and backend API.
 
 When finished, press `Ctrl+C` in the PowerShell window.
 
----
+## Environment Configuration
 
-## Configure LAN Connectivity
+| Variable | Purpose | Default Value |
+|-----------|---------|---------------|
+| `NODE_ENV` | Environment mode | `development` |
+| `PORT` | Server port | `3000` |
+| `HOST` | Network binding | `0.0.0.0` (all interfaces) |
+| `JWT_SECRET` | JWT signing secret | `webshield-demo-secret-key-2026-lab-only` |
+| `COOKIE_SECURE` | HTTPS-only cookies | `false` |
+| `ADMIN_EMAIL` | Administrator email | `admin@webshield.local` |
+| `ADMIN_PASSWORD` | Administrator password | `admin123` |
+| `USER_EMAIL` | Demo user email | `user@webshield.local` |
+| `USER_PASSWORD` | Demo user password | `user123` |
+| `DATABASE_URL` | SQLite database path | `file:./dev.db` |
+| `TEST_DATABASE_URL` | Test database path | `file:./test.db` |
+| `TRUSTED_PROXY` | Proxy trust setting | `false` |
+
+**Important:**
+- `HOST=0.0.0.0` is required for LAN access from other computers
+- `PORT=3000` is the presentation port
+- `.env` must remain private and never be committed to Git
+- Use `.env.example` as a template for fresh installations
+
+## LAN Network Configuration
 
 ### Step 1: Connect All Computers to the Same Network
 
@@ -228,17 +267,21 @@ IPv4 Address. . . . . . . . . . . : 192.168.1.100
 
 Record this IP address (e.g., `192.168.1.100`).
 
-### Step 3: Verify WebShield Configuration
+### Step 3: Find Attacker Computers' IP Addresses
 
-The `.env` file should have:
-```env
-HOST=0.0.0.0
-PORT=5000
+On Computer 2 and Computer 3, run:
+
+```powershell
+ipconfig
 ```
 
-This configuration allows connections from any computer on the LAN.
+Record their IPv4 addresses (e.g., `192.168.1.101` and `192.168.1.102`).
 
-### Step 4: Allow Port Through Windows Firewall
+### Step 4: Confirm Same Network
+
+Verify all computers are on the same subnet (same first three octets, e.g., `192.168.1.x`).
+
+### Step 5: Configure Windows Firewall
 
 On Computer 1:
 
@@ -247,12 +290,14 @@ On Computer 1:
 3. Select "Port" → Next
 4. Select "TCP" → Specify local ports: `3000` → Next
 5. Select "Allow the connection" → Next
-6. Select all profiles (Domain, Private, Public) → Next
+6. Select "Private" only (uncheck Domain and Public) → Next
 7. Name the rule: `WebShield Server` → Finish
 
-### Step 5: Test Connectivity from Attacker Computers
+**Important**: Restrict the firewall rule to the Private network profile only. Do not disable Windows Firewall.
 
-On Computer 2, open PowerShell and test:
+### Step 6: Verify Connectivity
+
+From Computer 2, test connectivity to Computer 1:
 
 ```powershell
 ping 192.168.1.100
@@ -261,38 +306,71 @@ ping 192.168.1.100
 Replace `192.168.1.100` with Computer 1's actual IP.
 
 Test TCP connectivity:
+
 ```powershell
 Test-NetConnection -ComputerName 192.168.1.100 -Port 3000
 ```
 
-If both tests pass, the computers can communicate.
+Both tests should pass. Repeat from Computer 3.
 
-### Step 6: Access WebShield from Attacker Computers
+**Example IP Addresses:**
+- Host: 192.168.1.100
+- Attacker A: 192.168.1.101
+- Attacker B: 192.168.1.102
 
-On Computer 2, open a browser and navigate to:
+Replace these with your actual LAN IP addresses.
+
+## Start WebShield on the Host
+
+On Computer 1, open PowerShell in the server directory:
+
+```powershell
+cd C:\Users\YourUsername\Desktop\webshield-idps\server
+npm start
+```
+
+You should see:
+
+```
+Database connected successfully
+WebShield server running on http://0.0.0.0:3000
+Admin dashboard: http://localhost:3000
+For LAN access: http://<YOUR_LAN_IP>:3000
+To find your LAN IP, run: ipconfig (Windows) or ifconfig (Linux/Mac)
+IDPS mode loaded: IPS
+```
+
+### Verify Application is Running
+
+Test the health endpoint:
+
+```powershell
+curl.exe http://localhost:3000/health
+```
+
+Expected response:
+```json
+{"success":true,"status":"healthy","timestamp":"..."}
+```
+
+### Access from Attacker Computers
+
+On Computer 2 and Computer 3, open a browser and navigate to:
 ```
 http://192.168.1.100:3000
 ```
 
-Replace `192.168.1.100` with Computer 1's actual IP.
+Replace `192.168.1.100` with Computer 1's actual LAN IP.
 
-You should see the WebShield login page.
+## Attacker Laptop A Setup (Computer 2)
 
-**Note:** In production mode, the same port (3000) serves both the frontend React application and the backend API. All requests (both frontend pages and API calls) go through this single port.
-
----
-
-## Attacker Computer Setup
-
-### Computer 2 (Attacker A) Setup
-
-#### Step 1: Verify Network Connection
+### Step 1: Verify Network Connection
 
 ```powershell
 ping 192.168.1.100
 ```
 
-#### Step 2: Find Your IP Address
+### Step 2: Find Your IP Address
 
 ```powershell
 ipconfig
@@ -300,14 +378,20 @@ ipconfig
 
 Record your IPv4 address (e.g., `192.168.1.101`).
 
-#### Step 3: Open WebShield
+### Step 3: Verify Host Connectivity
+
+```powershell
+Test-NetConnection -ComputerName 192.168.1.100 -Port 3000
+```
+
+### Step 4: Open WebShield
 
 Open browser and navigate to:
 ```
 http://192.168.1.100:3000
 ```
 
-#### Step 4: Send Normal Request
+### Step 5: Send Normal Request
 
 ```powershell
 curl.exe http://192.168.1.100:3000/api/demo/public
@@ -315,200 +399,329 @@ curl.exe http://192.168.1.100:3000/api/demo/public
 
 Expected: HTTP 200 with successful response.
 
-#### Step 5: Send SQL Injection Test Request
+### Step 6: Send SQL Injection Test Request
 
 ```powershell
-curl.exe "http://192.168.1.100:3000/api/demo/search?q=%27%20OR%20%271%27%3D%271"
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=' OR '1'='1" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
 ```
 
-This is URL-encoded for `' OR '1'='1`
+The `-i` flag displays HTTP response headers and status.
 
 Expected behavior:
 - **IDS Mode**: HTTP 200 (request succeeds, attack logged)
 - **IPS Mode**: HTTP 403 (request blocked with message: "Request blocked by WebShield IDPS")
 
-#### Step 6: Send XSS Test Request
+**Note:** The `-A` flag sets a normal User-Agent to avoid additional suspicious user agent detection.
+
+## Attacker Laptop B Setup (Computer 3)
+
+### Step 1: Verify Network Connection
 
 ```powershell
-curl.exe "http://192.168.1.100:3000/api/demo/search?q=%3Cscript%3Ealert('xss')%3C/script%3E"
+ping 192.168.1.100
 ```
 
-This is URL-encoded for `<script>alert('xss')</script>`
+### Step 2: Find Your IP Address
+
+```powershell
+ipconfig
+```
+
+Record your IPv4 address (e.g., `192.168.1.102`).
+
+### Step 3: Verify Host Connectivity
+
+```powershell
+Test-NetConnection -ComputerName 192.168.1.100 -Port 3000
+```
+
+### Step 4: Open WebShield
+
+Open browser and navigate to:
+```
+http://192.168.1.100:3000
+```
+
+### Step 5: Send Normal Request
+
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public
+```
+
+Expected: HTTP 200 with successful response.
+
+### Step 6: Send XSS Test Request
+
+```powershell
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=<script>alert('xss')</script>" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
+```
 
 Expected behavior:
 - **IDS Mode**: HTTP 200 (request succeeds, attack logged)
 - **IPS Mode**: HTTP 403 (request blocked with message: "Request blocked by WebShield IDPS")
 
-**Note:** All API requests use the same port (3000) as the frontend in production mode.
+## Complete IDS Demonstration
 
-### Computer 3 (Attacker B) Setup
+### Step 1: Administrator Logs Into WebShield
 
-Follow the same steps as Computer 2, using your own IP address.
+On Computer 1:
+- Open browser to `http://localhost:3000`
+- Enter email: `admin@webshield.local`
+- Enter password: `admin123`
+- Click Login
 
----
+### Step 2: Administrator Switches to IDS Mode
 
-## Complete Presentation Walkthrough
+- Navigate to Admin Dashboard
+- Click "Settings" or navigate to the mode selector
+- Select "IDS" mode
+- Confirm mode shows "IDS" in the dashboard
 
-### IDS Mode Demonstration
+### Step 3: Verify No Existing IP Blocks
 
-**On Computer 1 (Host):**
+- Navigate to "Blocked Sources" in admin dashboard
+- Ensure Computer 2 and Computer 3 IPs are not blocked
+- If blocked, click "Unblock" for each
 
-1. Log in as administrator (admin@webshield.local / admin123)
-2. Navigate to Admin Dashboard
-3. Click "Settings" or navigate to the mode selector
-4. Select "IDS" mode
-5. Confirm mode shows "IDS" in the dashboard
+### Step 4: Computer 2 Sends SQL Injection Request
 
-**On Computer 2 (Attacker A):**
+On Computer 2:
+```powershell
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=' OR '1'='1" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
+```
 
-5. Send SQL injection:
-   ```powershell
-   curl.exe "http://192.168.1.100:3000/api/demo/search?q=%27%20OR%20%271%27%3D%271"
-   ```
+### Step 5: Verify HTTP 200
 
-**On Computer 1 (Host):**
+Expected response status: `HTTP/1.1 200 OK`
 
-6. Verify on dashboard:
-   - Request appears in live traffic log
-   - Source IP: Computer 2's IP
-   - Attack type: SQL_INJECTION
-   - Action: ALERT (or LOG)
-   - Request was not blocked (HTTP 200 shown in logs)
+### Step 6: Verify SQL_INJECTION Security Event
 
-**On Computer 3 (Attacker B):**
+On Computer 1:
+- Navigate to "Threat Events" in admin dashboard
+- Verify a new security event appears with:
+  - Source IP: Computer 2's LAN IP (e.g., 192.168.1.101)
+  - Attack type: SQL_INJECTION
+  - Timestamp: Current time
+  - Request ID: Format `REQ-<timestamp>-<random>`
+  - Action: ALERT or LOG
+  - Risk score: 40
 
-7. Send XSS attack:
-   ```powershell
-   curl.exe "http://192.168.1.100:3000/api/demo/search?q=%3Cscript%3Ealert('xss')%3C/script%3E"
-   ```
+### Step 7: Computer 3 Sends XSS Request
 
-**On Computer 1 (Host):**
+On Computer 3:
+```powershell
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=<script>alert('xss')</script>" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
+```
 
-8. Verify on dashboard:
-   - Second attack appears in logs
-   - Source IP: Computer 3's IP
-   - Attack type: XSS
-   - Action: ALERT (or LOG)
-   - Request was not blocked
+### Step 8: Verify HTTP 200
 
-**Expected IDS Mode Result:**
-- Both requests succeed (HTTP 200)
-- Both attacks are detected and logged
-- Dashboard shows genuine security events with correct IPs and timestamps
-- No requests are blocked at the IDPS layer
+Expected response status: `HTTP/1.1 200 OK`
 
-### IPS Mode Demonstration
+### Step 9: Verify XSS Security Event
 
-**On Computer 1 (Host):**
+On Computer 1:
+- Navigate to "Threat Events" in admin dashboard
+- Verify a new security event appears with:
+  - Source IP: Computer 3's LAN IP (e.g., 192.168.1.102)
+  - Attack type: XSS
+  - Timestamp: Current time
+  - Request ID: Format `REQ-<timestamp>-<random>`
+  - Action: ALERT or LOG
+  - Risk score: 45
 
-1. Click "Settings" or navigate to the mode selector
-2. Select "IPS" mode
-3. Confirm mode shows "IPS" in the dashboard
+### Step 10: Show Attack Details
 
-**On Computer 2 (Attacker A):**
+On Computer 1:
+- Click on each security event to view details
+- Show the actual LAN IP addresses, attack types, timestamps, request IDs, and actions
+- Explain that IDS detects and logs suspicious activity without blocking the request at the IDPS layer
 
-3. Send SQL injection:
-   ```powershell
-   curl.exe "http://192.168.1.100:3000/api/demo/search?q=%27%20OR%20%271%27%3D%271"
-   ```
+## Complete IPS Demonstration
 
-**On Computer 2 (Attacker A):**
+### Step 1: Administrator Switches to IPS Mode
 
-4. Verify response:
-   - HTTP 403 Forbidden
-   - Response body: "Request blocked by WebShield IDPS"
+On Computer 1:
+- Navigate to "Settings" or mode selector
+- Select "IPS" mode
+- Confirm mode shows "IPS" in the dashboard
 
-**On Computer 1 (Host):**
+### Step 2: Computer 2 Sends SQL Injection
 
-5. Verify on dashboard:
-   - Attack appears in blocked sources
-   - Source IP: Computer 2's IP
-   - Attack type: SQL_INJECTION
-   - Action: BLOCK or TEMP_BLOCK
-   - Request was successfully prevented
+On Computer 2:
+```powershell
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=' OR '1'='1" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
+```
 
-**On Computer 3 (Attacker B):**
+### Step 3: Verify HTTP 403 and SQL_INJECTION Detection
 
-6. Send normal request:
-   ```powershell
-   curl.exe http://192.168.1.100:3000/api/demo/public
-   ```
+Expected response status: `HTTP/1.1 403 Forbidden`
 
-7. Verify response: HTTP 200 (Computer 3 remains operational)
+On Computer 1:
+- Navigate to "Threat Events"
+- Verify security event shows:
+  - Attack type: SQL_INJECTION
+  - Action: TEMP_BLOCK
+  - Source IP: Computer 2's LAN IP
+  - Risk score: 40
 
-8. Send XSS attack:
-   ```powershell
-   curl.exe "http://192.168.1.100:3000/api/demo/search?q=%3Cscript%3Ealert('xss')%3C/script%3E"
-   ```
+### Step 4: Show Blocked IP on Dashboard
 
-9. Verify response: HTTP 403 (XSS blocked)
+On Computer 1:
+- Navigate to "Blocked Sources"
+- Verify Computer 2's IP appears in the blocked list
+- Show the block action and timestamp
 
-**On Computer 1 (Host):**
+### Step 5: Computer 2 Attempts Normal Request
 
-10. Verify dashboard shows Computer 3's blocked IP
+On Computer 2:
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public -i
+```
 
-**On Computer 1 (Host):**
+Expected: HTTP 403 (still blocked)
 
-11. Navigate to "Blocked Sources" in admin dashboard
-12. Find Computer 2's IP
-13. Click "Unblock"
+### Step 6: Computer 3 Sends Normal Request
 
-**On Computer 2 (Attacker A):**
+On Computer 3:
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public -i
+```
 
-14. Send normal request:
-    ```powershell
-    curl.exe http://192.168.1.100:3000/api/demo/public
-    ```
+Expected: HTTP 200 (Computer 3 remains operational)
 
-15. Verify response: HTTP 200 (access restored)
+### Step 7: Administrator Unblocks Computer 2
 
-**Expected IPS Mode Result:**
-- Attack requests are blocked (HTTP 403)
-- Legitimate requests from unblocked computers succeed (HTTP 200)
-- Dashboard shows blocked sources with unblock controls
-- Administrator can unblock IPs to restore access
-- System remains operational for all non-blocked computers
+On Computer 1:
+- Navigate to "Blocked Sources"
+- Find Computer 2's IP
+- Click "Unblock"
 
----
+### Step 8: Verify Computer 2 Access Restored
+
+On Computer 2:
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public -i
+```
+
+Expected: HTTP 200 (access restored)
+
+### Step 9: Computer 3 Sends XSS Attack
+
+On Computer 3:
+```powershell
+curl.exe -G http://192.168.1.100:3000/api/demo/search --data-urlencode "query=<script>alert('xss')</script>" -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -i
+```
+
+### Step 10: Verify HTTP 403 and XSS Event
+
+Expected response status: `HTTP/1.1 403 Forbidden`
+
+On Computer 1:
+- Navigate to "Threat Events"
+- Verify security event shows:
+  - Attack type: XSS
+  - Action: TEMP_BLOCK
+  - Source IP: Computer 3's LAN IP
+  - Risk score: 45
+
+### Step 11: Administrator Unblocks Computer 3
+
+On Computer 1:
+- Navigate to "Blocked Sources"
+- Find Computer 3's IP
+- Click "Unblock"
+
+### Step 12: Verify Both Attackers Can Access Again
+
+On Computer 2 and Computer 3:
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public -i
+```
+
+Expected: HTTP 200 for both
+
+**Explanation**: IPS mode differs from IDS by actually blocking malicious requests at the IDPS layer, not just logging them. High-risk requests receive HTTP 403 responses, and the source IP is temporarily blocked.
+
+## Automatic Dashboard Updates
+
+The Threat Events page displays new attack events automatically through two mechanisms:
+
+1. **Socket.IO Real-Time Updates**: When a security event is created, the backend emits a `security:new` event. The frontend listens for this event and refreshes the event list immediately.
+
+2. **Polling Fallback**: Every 2 seconds, the frontend polls the server for new security events. This ensures events appear even if Socket.IO connection issues occur.
+
+### What to Check If Events Do Not Appear Automatically
+
+1. Check browser console for Socket.IO connection errors
+2. Verify the server is running and Socket.IO is initialized
+3. Refresh the page manually
+4. Check network connectivity
+5. Verify the admin is logged in and authenticated
 
 ## Troubleshooting
 
-### Server Not Starting
+### Node.js or npm Not Installed
 
-**Problem:** `npm start` fails with errors
+**Problem**: `node` or `npm` commands not recognized
 
-**Solutions:**
-- Ensure you're in the `server` directory
-- Check that dependencies are installed: `npm install`
-- Verify `.env` file exists and is correctly formatted
-- Check that port 5000 is not in use: `netstat -ano | findstr :5000`
-- Kill any process using port 5000: `taskkill /PID <pid> /F`
+**Solutions**:
+- Download and install Node.js from https://nodejs.org/
+- Restart PowerShell after installation
+- Verify installation: `node --version` and `npm --version`
 
-### Database Connection Failure
+### Dependencies Missing
 
-**Problem:** Application fails to connect to database
+**Problem**: `npm install` fails or module not found errors
 
-**Solutions:**
-- Ensure database migrations ran: `npx prisma migrate deploy`
-- Verify `prisma/dev.db` exists in the `server/prisma` directory
-- Check `DATABASE_URL` in `.env` file
-- Delete and recreate database: `del prisma\dev.db` then run migrations and seed again
-
-### Missing Dependencies
-
-**Problem:** `npm install` fails or module not found errors
-
-**Solutions:**
+**Solutions**:
 - Ensure Node.js is installed: `node --version`
 - Clear npm cache: `npm cache clean --force`
 - Delete `node_modules` and `package-lock.json`, then run `npm install` again
 - Check internet connection
 
+### Prisma/Database Connection Failure
+
+**Problem**: Application fails to connect to database
+
+**Solutions**:
+- Ensure database migrations ran: `npx prisma migrate deploy`
+- Verify `prisma/dev.db` exists in the `server/prisma` directory
+- Check `DATABASE_URL` in `.env` file
+- Verify SQLite is available (included with Prisma)
+
+### Server Failing to Start
+
+**Problem**: `npm start` fails with errors
+
+**Solutions**:
+- Ensure you're in the `server` directory
+- Check that dependencies are installed: `npm install`
+- Verify `.env` file exists and is correctly formatted
+- Check that port 3000 is not in use: `netstat -ano | findstr :3000`
+- If port 3000 is in use, either:
+  - Change PORT in `.env` to a different port (e.g., 3001)
+  - Or kill the process using PowerShell: `Stop-Process -Id <pid> -Force`
+
+### Port 3000 Already Occupied
+
+**Problem**: `EADDRINUSE: address already in use 0.0.0.0:3000`
+
+**Solutions**:
+```powershell
+# Find process using port
+netstat -ano | findstr :3000
+
+# Kill the process (replace <pid> with actual PID)
+Stop-Process -Id <pid> -Force
+
+# Or change port in .env to 3001
+```
+
 ### Administrator Login Failure
 
-**Problem:** Cannot log in with admin credentials
+**Problem**: Cannot log in with admin credentials
 
-**Solutions:**
+**Solutions**:
 - Verify credentials in `.env` file match what you're entering
 - Ensure database was seeded: `node prisma/seed.js`
 - Check that password hashing is working correctly
@@ -516,84 +729,105 @@ Follow the same steps as Computer 2, using your own IP address.
 
 ### Attacker Laptop Cannot Access Host
 
-**Problem:** Curl commands from Computer 2/3 fail
+**Problem**: Curl commands from Computer 2/3 fail
 
-**Solutions:**
+**Solutions**:
 - Verify all computers are on the same network
 - Check Computer 1's IP address: `ipconfig`
-- Test connectivity: `ping <host-ip>` and `Test-NetConnection -ComputerName <host-ip> -Port 5000`
-- Ensure Windows Firewall allows port 5000 on Computer 1
+- Test connectivity: `ping <host-ip>` and `Test-NetConnection -ComputerName <host-ip> -Port 3000`
+- Ensure Windows Firewall allows port 3000 on Computer 1
 - Check that server is running with `HOST=0.0.0.0` in `.env`
 - Verify frontend is accessible: open `http://<host-ip>:3000` in browser
 
-### Incorrect IP Address in Logs
+### Windows Firewall Blocking Connections
 
-**Problem:** Dashboard shows `::ffff:127.0.0.1` instead of LAN IP
+**Problem**: Connection refused or timeout
 
-**Solutions:**
+**Solutions**:
+- Add inbound rule for port 3000 in Windows Firewall
+- Ensure rule allows Private network profile only
+- Do not disable Windows Firewall
+- Check if antivirus software is blocking the connection
+
+### Incorrect IP Address in Security Logs
+
+**Problem**: Dashboard shows `::ffff:127.0.0.1` instead of LAN IP
+
+**Solutions**:
 - This is IPv6 loopback mapping and is normal for localhost testing
 - For LAN access, ensure requests come from actual LAN IP (not localhost)
 - Check that curl commands use Computer 1's LAN IP, not `localhost`
 
-### Windows Firewall Blocking Connection
+### SQL Injection or XSS Not Detected
 
-**Problem:** Connection refused or timeout
+**Problem**: Requests succeed but no security events appear
 
-**Solutions:**
-- Add inbound rule for port 5000 in Windows Firewall
-- Ensure rule allows Private network profile
-- Temporarily disable firewall for testing (not recommended for production)
-- Check if antivirus software is blocking the connection
-
-### Attacks Not Generating Alerts
-
-**Problem:** Requests succeed but no security events appear
-
-**Solutions:**
+**Solutions**:
 - Verify IDPS mode is enabled (not Monitor mode)
 - Check that detectors are active in `server/src/idps/detectors/`
-- Increase risk scores in `server/src/config/idps.js` if attacks are too subtle
-- Ensure request patterns match detector regex patterns
+- Verify request patterns match detector regex patterns
 - Check browser console and server logs for errors
+- Ensure you're using the correct `query` parameter
+- Verify URL encoding is correct
 
 ### IDS Unexpectedly Blocking Requests
 
-**Problem:** Requests blocked in IDS mode
+**Problem**: Requests blocked in IDS mode
 
-**Solutions:**
+**Solutions**:
 - Check for old block records in `BlockedSource` table
 - Manually unblock IPs from admin dashboard
 - Verify mode is actually IDS (not IPS)
-- Clear all blocks: `DELETE FROM BlockedSource` (use with caution)
-- Restart the server after clearing blocks
+- Do not delete the database to solve this
 
 ### IPS Detecting But Not Blocking
 
-**Problem:** Attacks detected but not prevented (HTTP 200 instead of 403)
+**Problem**: Attacks detected but not prevented (HTTP 200 instead of 403)
 
-**Solutions:**
+**Solutions**:
 - Verify mode is actually IPS (not IDS)
 - Check risk score thresholds in `server/src/config/idps.js`
 - Ensure prevention layer is working in `server/src/idps/prevention/`
 - Check that `riskScore` is high enough to trigger blocking
-- Verify block creation logic in `server/src/idps/prevention/blocker.js`
+- XSS score is 45, SQL injection score is 40 (both should trigger TEMP_BLOCK)
 
-### Dashboard Not Showing Real-Time Updates
+### Dashboard Not Receiving Live Events
 
-**Problem:** New attacks don't appear immediately
+**Problem**: New attacks don't appear immediately
 
-**Solutions:**
+**Solutions**:
 - Refresh the page to load new data
 - Check browser console for Socket.IO connection errors
 - Verify Socket.IO server is running
-- Check that admin has joined the admin room
+- Check that admin is logged in and authenticated
+- Wait 2 seconds for polling fallback
 - Restart the server if Socket.IO connection fails
 
----
+### Unblock Not Restoring Access
+
+**Problem**: IP remains blocked after unblocking
+
+**Solutions**:
+- Verify the unblock operation completed successfully
+- Check that the IP is no longer in the Blocked Sources list
+- Clear browser cache
+- Try a new request after a few seconds
+- Restart the server if necessary
+
+### Laptop Disconnecting from Wi-Fi During Presentation
+
+**Problem**: Connection lost during demonstration
+
+**Solutions**:
+- Reconnect to the same Wi-Fi network
+- Verify IP address hasn't changed
+- Re-run connectivity tests
+- Consider using a mobile hotspot for more stable connection
+- Have a backup plan (e.g., Ethernet cable)
 
 ## Resetting Between Demonstrations
 
-### Unblock Attacker IP Addresses
+### Manually Unblock Demonstration IPs
 
 1. Navigate to "Blocked Sources" in admin dashboard
 2. Find the IP address to unblock
@@ -602,150 +836,83 @@ Follow the same steps as Computer 2, using your own IP address.
 
 ### Switch Back to IDS Mode
 
-1. Navigate to "Settings" or "Mode" in admin dashboard
+1. Navigate to "Settings" or mode selector
 2. Select "IDS" mode
 3. Confirm mode change in dashboard
 
-### Clear Temporary Demo State
+### Verify Both Attacker Computers Can Send Normal Requests
 
-If the demonstration needs a clean slate:
+On Computer 2 and Computer 3:
+```powershell
+curl.exe http://192.168.1.100:3000/api/demo/public -i
+```
 
-1. **Option A: Clear Blocks Only**
-   - Navigate to "Blocked Sources"
-   - Click "Clear All Blocks" (if available)
-   - Or manually unblock each IP
+Expected: HTTP 200 for both
 
-2. **Option B: Clear Security Events**
-   - Security events remain in database for audit trail
-   - You can view them in "Live Traffic" dashboard
-   - To clear old events for cleaner demo, delete from `SecurityEvent` table
+### Preserve Demonstration Logs
 
-3. **Option C: Restart Application**
-   - Stop server with `Ctrl+C`
-   - Restart with `npm start`
-   - This clears in-memory state but preserves database
+Security events remain in the database for audit trail. You can view them in the "Threat Events" dashboard. Do not delete the database to clear logs.
 
-**Do not:**
-- Delete the database file (this removes all data)
-- Manually modify database records unless necessary
-- Change source code during demonstration
+### Restart the Server If Necessary
 
-### Restarting After Changes
-
-If you modified configuration:
-
-1. Stop the server: `Ctrl+C`
+1. Stop the server: `Ctrl+C` in PowerShell
 2. Restart: `npm start`
 3. Refresh browser to reconnect
 
----
+**Important**: The demonstration must be repeatable without source-code changes or manual database edits. Use the admin dashboard for all management operations.
 
-## GitHub Repository Hygiene
+## Presentation Checklist
 
-### .gitignore Configuration
+### Localhost Verification (Before Physical Setup)
 
-The repository includes a `.gitignore` file to prevent uploading sensitive files:
+- [ ] Node.js and npm installed
+- [ ] Dependencies installed in both server and client
+- [ ] `.env` configured with correct values
+- [ ] Prisma Client generated
+- [ ] Database initialized and seeded
+- [ ] Frontend built successfully
+- [ ] Server starts on port 3000
+- [ ] Health endpoint responds correctly
+- [ ] Administrator can log in (admin@webshield.local / admin123)
+- [ ] IDS SQL injection returns HTTP 200 with SQL_INJECTION event
+- [ ] IDS XSS returns HTTP 200 with XSS event
+- [ ] IPS SQL injection returns HTTP 403 with SQL_INJECTION + TEMP_BLOCK
+- [ ] IPS XSS returns HTTP 403 with XSS + TEMP_BLOCK
+- [ ] Dashboard displays genuine events automatically
+- [ ] Manual unblock restores normal access
+- [ ] Frontend loads successfully on port 3000
 
-```
-# Dependencies
-node_modules/
-package-lock.json
+### Physical LAN Verification (You Will Perform This)
 
-# Environment variables
-.env
-.env.local
-.env.*.local
+- [ ] All three laptops connected to same network
+- [ ] Host IP recorded (e.g., 192.168.1.100)
+- [ ] Attacker A IP recorded (e.g., 192.168.1.101)
+- [ ] Attacker B IP recorded (e.g., 192.168.1.102)
+- [ ] Port 3000 accessible from attacker laptops
+- [ ] Windows Firewall configured for Private network only
+- [ ] Administrator logged in on host
+- [ ] IDS SQL injection successful (HTTP 200 + SQL_INJECTION event)
+- [ ] IDS XSS successful (HTTP 200 + XSS event)
+- [ ] IPS SQL injection successful (HTTP 403 + SQL_INJECTION + TEMP_BLOCK)
+- [ ] IPS XSS successful (HTTP 403 + XSS + TEMP_BLOCK)
+- [ ] Logs visible automatically on dashboard
+- [ ] Blocked-source functionality working
+- [ ] Manual unblock working
+- [ ] Other attacker laptop remains operational when one is blocked
+- [ ] Demonstration can be repeated without code or database changes
 
-# Database files
-*.db
-*.db-shm
-*.db-wal
-prisma/*.db
-prisma/*.db-journal
+## Important Notes
 
-# Database backups
-*.backup
-
-# Build outputs
-dist/
-build/
-.next/
-out/
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# Temporary files
-*.tmp
-.cache/
-```
-
-### Environment Variables Template
-
-The `.env.example` file contains variable names and placeholder values:
-- Copy this file to `.env` and fill in actual values
-- Never commit `.env` to the repository
-- `.env.example` is safe to commit
-
-### Fresh Installation Instructions
-
-For a fresh clone of the repository:
-
-1. Clone repository
-2. Install dependencies (`npm install` in both `server` and `client`)
-3. Copy `.env.example` to `.env` and configure
-4. Generate Prisma client: `npx prisma generate`
-5. Run migrations: `npx prisma migrate deploy`
-6. Seed database: `node prisma/seed.js`
-7. Build frontend: `cd client && npm run build`
-8. Start server: `cd server && npm start`
-
-The seed script creates:
-- Administrator account (admin@webshield.local / admin123)
-- Demo user account (user@webshield.local / user123)
-- Default security rules and system settings
-
----
-
-## README Verification
-
-Before completing this task, verify:
-
-- [ ] Every command in README.md works with the final repository
-- [ ] Documented ports (5000 for backend, 3000 for frontend) match the application
-- [ ] Documented routes match the actual API endpoints
-- `   [ ] GitHub clone setup works from a fresh directory
-- [ ] README contains complete instructions for both host and attacker computers
-- [ ] Physical LAN steps are clearly marked for user verification
-
----
-
-## Completion Criteria
-
-The presentation version is complete when:
-
-- **IDS Mode**: Computer 2 or 3 attacks → request not blocked (HTTP 200) → genuine alert appears on admin dashboard with correct IP, attack type, timestamp, request ID, and action
-- **IPS Mode**: Computer 2 or 3 attacks → request blocked (HTTP 403) → genuine prevention log appears on admin dashboard with blocked source IP
-- **Unblock**: A blocked client can be unblocked by the administrator through the dashboard
-- **Isolation**: The other client remains operational when one is blocked
-- **Repeatability**: The entire demonstration can be repeated without manually modifying database records or changing application source code
-
----
+- **No production-level security features have been added** (as requested)
+- **No Playwright or extensive test suite changes** (as requested)
+- **No unrelated features added** (as requested)
+- Physical LAN testing is required before claiming completion
+- The README.md contains everything needed for another student to reproduce the demonstration
+- Use port 3000 consistently throughout
+- Always use the correct `query` parameter in attack commands
+- Use normal User-Agent headers to avoid additional detection
+- Do not delete the database or manually edit database records
+- Use the admin dashboard for all management operations
 
 ## License
 

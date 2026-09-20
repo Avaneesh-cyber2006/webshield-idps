@@ -31,6 +31,10 @@ prisma/*.db-journal
 # Database backups
 *.backup
 
+# Cookies and sessions
+cookies.txt
+*.cookie
+
 # Logs
 logs/
 *.log

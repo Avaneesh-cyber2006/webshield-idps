@@ -95,13 +95,13 @@ const NetworkDemo = () => {
               number={2}
               icon={<Laptop className="w-5 h-5" />}
               title="Computer 2 - Normal User"
-              description="Access the demo application from: http://SERVER_LAN_IP:8080/demo"
+              description="Access the demo application from: http://SERVER_LAN_IP:3000/demo"
             />
             <StepCard
               number={3}
               icon={<Smartphone className="w-5 h-5" />}
               title="Computer 3 - Security Test Client"
-              description="Access the Test Lab from: http://SERVER_LAN_IP:8080/admin/test-lab"
+              description="Access the Test Lab from: http://SERVER_LAN_IP:3000/admin/test-lab"
             />
           </div>
         </div>

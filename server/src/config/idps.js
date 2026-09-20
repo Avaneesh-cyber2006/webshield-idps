@@ -27,7 +27,7 @@ module.exports = {
     authenticationFailure: 10,
     requestRateAbuse: 20,
     pathTraversal: 30,
-    xssPattern: 35,
+    xssPattern: 45,  // Increased to 45 for reliable IPS blocking in presentation (HIGH threshold starts at 40)
     sqlInjectionPattern: 40,
     payloadSizeExceeded: 15
   },

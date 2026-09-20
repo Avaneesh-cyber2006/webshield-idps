@@ -37,7 +37,7 @@ class XSSDetector {
           matched: true,
           category: 'XSS',
           severity: 'HIGH',
-          score: 35,
+          score: 45,
           description: 'Cross-site scripting pattern detected'
         };
       }
