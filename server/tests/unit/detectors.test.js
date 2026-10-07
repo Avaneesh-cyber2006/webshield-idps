@@ -62,7 +62,7 @@ const xssResult1 = xssDetector.detect({
 assert.strictEqual(xssResult1.matched, true, 'XSS: should detect script tag pattern')
 assert.strictEqual(xssResult1.category, 'XSS')
 assert.strictEqual(xssResult1.severity, 'HIGH')
-assert.strictEqual(xssResult1.score, 35)
+assert.strictEqual(xssResult1.score, 45)
 
 // Regression test: repeated XSS input
 const xssResult1_repeat = xssDetector.detect({

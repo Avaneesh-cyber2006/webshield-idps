@@ -11,7 +11,7 @@ function createIDPSMiddleware(io) {
   }
 
   return (req, res, next) => {
-    inspectorInstance.inspect(req, res, next);
+    return inspectorInstance.inspect(req, res, next).catch(next);
   };
 }
 

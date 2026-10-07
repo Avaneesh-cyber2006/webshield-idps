@@ -24,19 +24,10 @@ function normalizeIp(ip) {
  * Only trust X-Forwarded-For when TRUSTED_PROXY is explicitly set to a truthy value
  */
 function getClientIp(req) {
-  const trustedProxy = process.env.TRUSTED_PROXY === 'true';
-
   const remoteAddr = req.socket.remoteAddress;
 
   // Only trust forwarded headers if explicitly configured
-  if (trustedProxy) {
-    const forwarded = req.headers['x-forwarded-for'];
-    const realIp = req.headers['x-real-ip'];
-    const ip = forwarded
-      ? forwarded.split(',')[0].trim()
-      : realIp || remoteAddr;
-    return normalizeIp(ip);
-  }
+  if (req.app?.get('trust proxy')) return normalizeIp(req.ip);
 
   // Default: use direct socket address, ignore all forwarded headers
   return normalizeIp(remoteAddr);

@@ -19,12 +19,14 @@ import Settings from './pages/admin/Settings'
 import NetworkDemo from './pages/admin/NetworkDemo'
 import AdminLayout from './layouts/AdminLayout'
 import DemoLayout from './layouts/DemoLayout'
+import ApiError from './components/ApiError'
 
 function App() {
   return (
     <AuthProvider>
       <SocketProvider>
         <Router>
+          <ApiError />
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />

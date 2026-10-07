@@ -28,7 +28,7 @@ setIDSMode().then(() => {
       cors: { origin: '*', credentials: true }
     });
 
-    initializeIDPS(io);
+    await initializeIDPS(io);
 
     await new Promise((resolve) => {
       server.listen(0, '127.0.0.1', () => {

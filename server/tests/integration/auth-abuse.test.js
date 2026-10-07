@@ -16,7 +16,7 @@ async function setupTestServer() {
     cors: { origin: '*', credentials: true }
   });
 
-  initializeIDPS(io);
+  await initializeIDPS(io);
 
   await new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => resolve());
@@ -131,6 +131,7 @@ async function testAuthFailureDetection() {
 
     const successLogin = await request(baseURL)
       .post('/api/auth/login')
+      .set('User-Agent', 'Mozilla/5.0')
       .send({ email: 'user@webshield.local', password: 'user123' });
 
     if (successLogin.status !== 200) {
@@ -142,6 +143,7 @@ async function testAuthFailureDetection() {
 
     const noAttackEvent = await prisma.securityEvent.findFirst({
       where: {
+        requestId: successLogin.headers['x-request-id'],
         riskScore: { gt: 0 }
       },
       orderBy: { createdAt: 'desc' }

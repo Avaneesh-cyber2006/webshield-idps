@@ -19,7 +19,7 @@ async function setupTestServer() {
     cors: { origin: '*', credentials: true }
   });
 
-  initializeIDPS(io);
+  await initializeIDPS(io);
 
   await new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => resolve());
@@ -151,6 +151,7 @@ async function testTestLabEndToEnd() {
     const normalResponse = await request(baseURL)
       .get(normalConfig.endpoint)
       .query(normalConfig.payload)
+      .set('Cookie', `token=${adminToken}`)
       .set('X-Test-Run-ID', testRunId)
       .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
@@ -187,6 +188,7 @@ async function testTestLabEndToEnd() {
     const sqlResponse = await request(baseURL)
       .get(sqlConfig.endpoint)
       .query(sqlConfig.payload)
+      .set('Cookie', `token=${adminToken}`)
       .set('X-Test-Run-ID', testRunId);
 
     const sqlRequestId = sqlResponse.headers['x-request-id'];
@@ -392,6 +394,7 @@ async function testTestLabEndToEnd() {
     const ipsSqlResponse = await request(baseURL)
       .get(sqlConfig.endpoint)
       .query(sqlConfig.payload)
+      .set('Cookie', `token=${adminToken}`)
       .set('X-Test-Run-ID', ipsTestRunId);
 
     const ipsSqlRequestId = ipsSqlResponse.headers['x-request-id'];

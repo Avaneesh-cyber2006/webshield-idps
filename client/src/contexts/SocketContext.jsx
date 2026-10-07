@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { io } from 'socket.io-client'
 
 const SocketContext = createContext(null)
@@ -40,25 +40,17 @@ export const SocketProvider = ({ children }) => {
     }
   }, [])
 
-  const joinAdminRoom = (token) => {
+  const joinAdminRoom = useCallback((token) => {
     if (socket) {
       socket.emit('join-admin', token)
-      socket.on('joined-admin', (data) => {
-        if (data.success) {
-          console.log('Successfully joined admin room')
-        }
-      })
-      socket.on('error', (error) => {
-        console.error('Socket error:', error.message)
-      })
     }
-  }
+  }, [socket])
 
-  const leaveAdminRoom = () => {
+  const leaveAdminRoom = useCallback(() => {
     if (socket) {
       socket.emit('leave-admin')
     }
-  }
+  }, [socket])
 
   const value = {
     socket,

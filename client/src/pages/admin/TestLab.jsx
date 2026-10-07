@@ -1,27 +1,18 @@
 import React, { useState, useEffect } from 'react'
-import { FlaskConical, Play, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Play, AlertCircle } from 'lucide-react'
 import api from '../../services/api'
 
 const TestLab = () => {
-  const [tests, setTests] = useState([])
   const [testRuns, setTestRuns] = useState([])
   const [running, setRunning] = useState(false)
   const [currentTestRun, setCurrentTestRun] = useState(null)
   const [showReport, setShowReport] = useState(false)
+  const [testEmail, setTestEmail] = useState('')
+  const [testPassword, setTestPassword] = useState('')
 
   useEffect(() => {
-    fetchTests()
     fetchTestRuns()
   }, [])
-
-  const fetchTests = async () => {
-    try {
-      const response = await api.get('/test-lab/tests')
-      setTests(response.data.tests)
-    } catch (error) {
-      console.error('Failed to fetch tests:', error)
-    }
-  }
 
   const fetchTestRuns = async () => {
     try {
@@ -29,16 +20,6 @@ const TestLab = () => {
       setTestRuns(response.data.testRuns)
     } catch (error) {
       console.error('Failed to fetch test runs:', error)
-    }
-  }
-
-  const runSingleTest = async (testId) => {
-    try {
-      const response = await api.post(`/test-lab/run/${testId}`)
-      return response.data.result
-    } catch (error) {
-      console.error('Test failed:', error)
-      return null
     }
   }
 
@@ -70,7 +51,8 @@ const TestLab = () => {
       // Execute tests from the browser with per-test cleanup for IPS mode
       const results = []
       for (const config of testConfigs) {
-        const testResults = await executeBrowserTest(config, testRunId)
+        await api.post(`/test-lab/cleanup-block/${testRunId}`, { testId: config.testId })
+        const testResults = await executeBrowserTest(config, testRunId, createRunResponse.data.testRun.token)
         // Append all individual observations (preserving repeated tests)
         results.push(...testResults)
 
@@ -92,8 +74,7 @@ const TestLab = () => {
           } catch (cleanupError) {
             console.error(`Per-test cleanup failed for ${config.testId}:`, cleanupError)
             // Per-test cleanup failure is critical - stop the test suite
-            alert(`Per-test cleanup failed for ${config.testId}. Test suite cannot continue safely.`)
-            return
+            throw cleanupError
           }
         }
       }
@@ -116,10 +97,7 @@ const TestLab = () => {
         } catch (cleanupError) {
           console.error('Final cleanup failed:', cleanupError)
           // Store cleanup failure in the report for visibility
-          if (currentTestRun) {
-            currentTestRun.cleanupFailed = true
-            currentTestRun.cleanupError = cleanupError.response?.data?.message || cleanupError.message
-          }
+          setCurrentTestRun(previous => ({ ...previous, cleanupFailed: true, cleanupError: cleanupError.response?.data?.message || cleanupError.message }))
         }
       }
     } catch (error) {
@@ -139,9 +117,14 @@ const TestLab = () => {
     }
   }
 
-  const executeBrowserTest = async (config, testRunId) => {
-    const { testId, endpoint, method, payload, headers, repeatCount } = config
+  const executeBrowserTest = async (config, testRunId, runToken) => {
+    const { testId, endpoint, method, headers, repeatCount } = config
+    const payload = testId === 'normal_login' ? { email: testEmail, password: testPassword } : config.payload
     const results = []
+
+    if (testId === 'suspicious_user_agent' || (testId === 'normal_login' && (!testEmail || !testPassword))) {
+      return [{ testId, httpStatus: 0, requestId: null, success: false, error: testId === 'suspicious_user_agent' ? 'Browsers control User-Agent. Run this probe with an HTTP client.' : 'Provide a demo user email and password to test login.' }]
+    }
 
     for (let i = 0; i < repeatCount; i++) {
       try {
@@ -155,20 +138,24 @@ const TestLab = () => {
         if (method === 'GET') {
           const queryParams = new URLSearchParams(payload).toString()
           response = await fetch(`${url}?${queryParams}`, {
+            cache: 'no-store',
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'X-Test-Run-ID': testRunId,  // Associate request with TestRun
+              'X-Test-Run-Token': runToken,
               ...headers
             },
             credentials: useCredentials ? 'include' : 'omit'
           })
         } else {
           response = await fetch(url, {
+            cache: 'no-store',
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'X-Test-Run-ID': testRunId,  // Associate request with TestRun
+              'X-Test-Run-Token': runToken,
               ...headers
             },
             credentials: useCredentials ? 'include' : 'omit',
@@ -177,7 +164,7 @@ const TestLab = () => {
         }
 
         const requestId = response.headers.get('X-Request-ID')
-        const data = await response.json()
+        await response.json()
 
         // Return individual observation for each request
         results.push({
@@ -228,6 +215,12 @@ const TestLab = () => {
         </button>
       </div>
 
+      <div className="mb-6 space-y-2 text-gray-300">
+        <p>Optional demo user credentials for the real login probe. The browser cannot run the User-Agent probe; it will be reported as unevaluated.</p>
+        <input aria-label="Test user email" type="email" value={testEmail} onChange={event => setTestEmail(event.target.value)} placeholder="Test user email" className="bg-dark-700 p-2 rounded mr-2" />
+        <input aria-label="Test user password" type="password" value={testPassword} onChange={event => setTestPassword(event.target.value)} placeholder="Test user password" className="bg-dark-700 p-2 rounded" />
+      </div>
+
       {showReport && currentTestRun && (
         <div className="bg-dark-800 rounded-lg border border-dark-600 p-6 mb-6">
           <h2 className="text-2xl font-semibold text-white mb-4">WebShield Security Test Report</h2>
@@ -246,7 +239,7 @@ const TestLab = () => {
             <MetricCard label="Total Tests" value={currentTestRun.results.length} />
             <MetricCard label="Passed" value={currentTestRun.metrics.passed} color="success" />
             <MetricCard label="Failed" value={currentTestRun.metrics.failed} color="danger" />
-            <MetricCard label="Overall Status" value={currentTestRun.metrics.failed === 0 ? 'PASS' : 'FAIL'} color={currentTestRun.metrics.failed === 0 ? 'success' : 'danger'} />
+            <MetricCard label="Overall Status" value={currentTestRun.metrics.failed === 0 ? 'PASS' : currentTestRun.metrics.failed === currentTestRun.metrics.unevaluated ? 'INCOMPLETE' : 'FAIL'} color={currentTestRun.metrics.failed === 0 ? 'success' : 'danger'} />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -289,7 +282,7 @@ const TestLab = () => {
           <tbody className="divide-y divide-dark-600">
             {currentTestRun?.results.map((result, index) => (
               <tr key={`${result.testId}-${index}`} className="hover:bg-dark-700">
-                <td className="px-4 py-3 text-sm text-white">{result.testName}</td>
+                <td className="px-4 py-3 text-sm text-white">{result.testName}{result.evidence?.errorMessage && <p className="text-gray-400">{result.evidence.errorMessage}</p>}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 text-xs font-semibold rounded ${getExpectedBadge(result.expectedType)}`}>
                     {result.expectedType}

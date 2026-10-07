@@ -12,13 +12,14 @@ async function getDashboard(req, res) {
     res.json({
       success: true,
       data: {
+        mode: require('../middleware/idps').getInspector()?.getMode(),
         user: {
           name: user.name,
           email: user.email
         },
         stats: {
-          totalRequests: 0,
-          securityEvents: 0
+          totalRequests: await prisma.trafficEvent.count({ where: { sourceIp: req.idps.sourceIp } }),
+          securityEvents: await prisma.securityEvent.count({ where: { sourceIp: req.idps.sourceIp } })
         }
       }
     });
@@ -111,7 +112,7 @@ async function contact(req, res) {
     // Just acknowledge the message
     res.json({
       success: true,
-      message: 'Message sent successfully'
+      message: 'Demo message received. This demonstration does not send email.'
     });
   } catch (error) {
     console.error('Contact error:', error);

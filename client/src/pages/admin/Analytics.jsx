@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import api from '../../services/api'
 
@@ -6,18 +6,20 @@ const Analytics = () => {
   const [data, setData] = useState(null)
   const [timeframe, setTimeframe] = useState('24h')
 
-  useEffect(() => {
-    fetchAnalytics()
-  }, [timeframe])
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
       const response = await api.get('/admin/analytics', { params: { timeframe } })
       setData(response.data.data)
     } catch (error) {
       console.error('Failed to fetch analytics:', error)
     }
-  }
+  }, [timeframe])
+
+  useEffect(() => {
+    fetchAnalytics()
+  }, [fetchAnalytics])
+
+
 
   const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6']
 
@@ -26,7 +28,7 @@ const Analytics = () => {
   }
 
   const threatsByTimeData = Object.entries(data.threatsByTime || {}).map(([hour, count]) => ({
-    hour: `${hour}:00`,
+    hour: new Date(hour).toLocaleString(),
     threats: count
   }))
 

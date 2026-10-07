@@ -16,10 +16,10 @@ class PayloadSizeDetector {
       : null;
 
     // Calculate body size
-    const bodySize = body ? JSON.stringify(body).length : 0;
+    const bodySize = body ? Buffer.byteLength(JSON.stringify(body), 'utf8') : 0;
 
     // Use the larger of the two
-    const totalSize = contentLength || bodySize;
+    const totalSize = Math.max(contentLength || 0, bodySize);
 
     if (totalSize > this.maxSize) {
       return {

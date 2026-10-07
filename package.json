@@ -8,7 +8,7 @@
     "server"
   ],
   "scripts": {
-    "setup": "npm install && cd server && npm install && cd ../client && npm install",
+    "setup": "npm ci",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
@@ -20,12 +20,14 @@
     "db:generate": "cd server && npx prisma generate",
     "db:migrate": "cd server && npx prisma migrate dev",
     "db:seed": "cd server && npx prisma db seed",
-    "db:reset": "cd server && npx prisma migrate reset"
+    "db:reset": "cd server && npx prisma migrate reset",
+    "db:deploy": "node server/scripts/init-db.js",
+    "lint": "npm run lint --workspace client"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20"
   }
 }

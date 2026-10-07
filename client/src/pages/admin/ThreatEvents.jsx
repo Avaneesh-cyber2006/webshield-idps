@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react'
-import { Calendar, Search, Filter } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
 import { useSocket } from '../../contexts/SocketContext'
 
@@ -8,6 +7,15 @@ const ThreatEvents = () => {
   const [filter, setFilter] = useState({ severity: '', category: '', source: '', date: '' })
   const [selectedEvent, setSelectedEvent] = useState(null)
   const { socket, connected } = useSocket()
+
+  const fetchEvents = useCallback(async () => {
+    try {
+      const response = await api.get('/admin/security-events', { params: filter })
+      setEvents(response.data.events)
+    } catch (error) {
+      console.error('Failed to fetch events:', error)
+    }
+  }, [filter])
 
   useEffect(() => {
     fetchEvents()
@@ -30,16 +38,9 @@ const ThreatEvents = () => {
         socket.off('security:new')
       }
     }
-  }, [socket, connected, filter])
+  }, [socket, connected, fetchEvents])
 
-  const fetchEvents = async () => {
-    try {
-      const response = await api.get('/admin/security-events', { params: filter })
-      setEvents(response.data.events)
-    } catch (error) {
-      console.error('Failed to fetch events:', error)
-    }
-  }
+
 
   const getSeverityBadge = (severity) => {
     const styles = {

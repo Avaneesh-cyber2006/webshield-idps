@@ -45,10 +45,15 @@ class IDPSInspector {
     let validatedRunId = null;
     if (runId) {
       try {
+        const { verifyToken } = require('../../middleware/auth');
+        const proof = verifyToken(req.headers['x-test-run-token']);
+        const session = verifyToken(req.cookies?.token || req.headers.authorization?.replace('Bearer ', ''));
+        const user = session?.id && await prisma.user.findUnique({ where: { id: session.id } });
+        const authorized = (proof?.purpose === 'test-run' && proof.runId === runId) || user?.role === 'admin';
         const testRun = await prisma.testRun.findUnique({
           where: { id: runId }
         });
-        if (testRun && (testRun.status === 'CREATED' || testRun.status === 'RUNNING')) {
+        if (authorized && testRun && (testRun.status === 'CREATED' || testRun.status === 'RUNNING')) {
           validatedRunId = runId;
         }
       } catch (error) {
@@ -86,7 +91,8 @@ class IDPSInspector {
             userAgent: req.headers['user-agent'],
             isAuthFailure: true
           };
-          const authResults = this.detectors.runAll(authDetectionData);
+          const authResults = ['authAbuse', 'loginAbuse'].map(name => this.detectors.runSpecific(name, authDetectionData)).filter(result => result.matched);
+          authResults.push({ category: 'AUTH_FAILURE', severity: 'LOW', score: 10 });
           const authRiskResult = this.riskEngine.calculate(authResults);
 
           if (authRiskResult.score > 0) {
@@ -110,9 +116,10 @@ class IDPSInspector {
 
     // Check if source is blocked
     // Allow cleanup and submit requests to pass through even if blocked (for admin self-unblock and report submission)
-    const isAllowedRequest = req.path && (req.path.includes('/cleanup/') || req.path.includes('/submit'));
     const blockedSource = await this.prevention.checkBlocked(sourceIp);
-    if (blockedSource && !isAllowedRequest) {
+    if (blockedSource) {
+      req.idps.riskScore = 100;
+      req.idps.action = 'BLOCK';
       await this.logSecurityEvent(req, {
         attackType: 'BLOCKED_SOURCE',
         severity: 'CRITICAL',
@@ -222,7 +229,7 @@ class IDPSInspector {
     }
 
     // Log security event for ALERT or LOG actions
-    if (decision.action === 'ALERT' || decision.action === 'LOG') {
+    if (['ALERT', 'LOG', 'ALLOW', 'RATE_LIMIT'].includes(decision.action)) {
       if (riskResult.score > 0) {
         await this.logSecurityEvent(req, {
           attackType: riskResult.categories.join(', ') || 'SUSPICIOUS',
@@ -252,7 +259,7 @@ class IDPSInspector {
           runId: req.idps.runId,  // Associate with TestRun for safe cleanup
           sourceIp: req.idps.sourceIp,
           method: req.method,
-          path: req.path,
+          path: (req.originalUrl || req.path).split('?')[0],
           attackType: eventData.attackType,
           severity: eventData.severity,
           riskScore: eventData.riskScore,
@@ -277,17 +284,17 @@ class IDPSInspector {
 
   async logTrafficEvent(req, res) {
     try {
-      const maskedQuery = this.maskSensitiveData(JSON.stringify(req.query));
-      const maskedBody = this.maskSensitiveData(JSON.stringify(req.body));
+      const maskedQuery = JSON.stringify(this.redact(req.query || {}));
+      const maskedBody = JSON.stringify(this.redact(req.body || {}));
       const maskedUserAgent = this.maskSensitiveData(req.headers['user-agent'] || 'unknown');
 
-      await prisma.trafficEvent.create({
+      const event = await prisma.trafficEvent.create({
         data: {
           requestId: req.idps.requestId,
           runId: req.idps.runId,  // Associate with TestRun for safe cleanup
           sourceIp: req.idps.sourceIp,
           method: req.method,
-          path: req.path,
+          path: (req.originalUrl || req.path).split('?')[0],
           query: maskedQuery.substring(0, 500),
           body: maskedBody.substring(0, 500),
           userAgent: maskedUserAgent.substring(0, 500),
@@ -300,10 +307,11 @@ class IDPSInspector {
       // Emit socket event to admin room only
       if (this.io) {
         this.io.to('admin').emit('traffic:new', {
+          id: event.id,
           requestId: req.idps.requestId,
           sourceIp: req.idps.sourceIp,
           method: req.method,
-          path: req.path,
+          path: event.path,
           status: res.statusCode || 200,
           riskScore: req.idps.riskScore || 0,
           action: req.idps.action || 'ALLOW',
@@ -313,6 +321,15 @@ class IDPSInspector {
     } catch (error) {
       console.error('Error logging traffic event:', error);
     }
+  }
+
+  redact(value) {
+    if (Array.isArray(value)) return value.map(item => this.redact(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+        /password|token|authorization|secret|key/i.test(key) ? '[REDACTED]' : this.redact(item)]));
+    }
+    return typeof value === 'string' ? this.maskSensitiveData(value) : value;
   }
 
   maskSensitiveData(data) {

@@ -17,14 +17,16 @@ async function getOverview(req, res) {
       criticalThreats
     ] = await Promise.all([
       prisma.trafficEvent.count(),
-      prisma.securityEvent.count({
+      prisma.securityEvent.groupBy({
+        by: ['requestId'],
         where: { riskScore: { gt: 0 } }
-      }),
-      prisma.securityEvent.count({
+      }).then(events => events.length),
+      prisma.securityEvent.groupBy({
+        by: ['requestId'],
         where: { blocked: true }
-      }),
+      }).then(events => events.length),
       prisma.blockedSource.count({
-        where: { active: true }
+        where: { active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }
       }),
       prisma.securityEvent.count({
         where: {
@@ -73,7 +75,7 @@ async function getTraffic(req, res) {
     const where = {};
     if (method) where.method = method;
     if (source) where.sourceIp = source;
-    if (blocked !== undefined) where.action = blocked === 'true' ? 'BLOCK' : { not: 'BLOCK' };
+    if (blocked) where.status = blocked === 'true' ? { in: [403, 429] } : { notIn: [403, 429] };
 
     const events = await prisma.trafficEvent.findMany({
       where,
@@ -137,10 +139,7 @@ async function getSecurityEvents(req, res) {
 async function getBlockedSources(req, res) {
   try {
     const blockedSources = await prisma.blockedSource.findMany({
-      orderBy: { blockedAt: 'desc' },
-      include: {
-        _count: true
-      }
+      orderBy: { blockedAt: 'desc' }
     });
 
     // Add device labels if available
@@ -149,6 +148,7 @@ async function getBlockedSources(req, res) {
 
     const sourcesWithLabels = blockedSources.map(source => ({
       ...source,
+      active: source.active && (!source.expiresAt || source.expiresAt > new Date()),
       deviceLabel: labelMap.get(source.sourceIp) || null
     }));
 
@@ -326,7 +326,7 @@ async function getAnalytics(req, res) {
 
     // Group by time
     const threatsByTime = threats.reduce((acc, threat) => {
-      const hour = new Date(threat.createdAt).getHours();
+      const hour = new Date(threat.createdAt).toISOString().slice(0, 13) + ':00Z';
       acc[hour] = (acc[hour] || 0) + 1;
       return acc;
     }, {});
@@ -349,14 +349,14 @@ async function getAnalytics(req, res) {
     const allowed = await prisma.trafficEvent.count({
       where: {
         createdAt: { gte: startDate },
-        action: 'ALLOW'
+        status: { notIn: [403, 429] }
       }
     });
 
     const blocked = await prisma.trafficEvent.count({
       where: {
         createdAt: { gte: startDate },
-        action: { in: ['BLOCK', 'TEMP_BLOCK', 'RATE_LIMIT'] }
+        status: { in: [403, 429] }
       }
     });
 
@@ -388,8 +388,7 @@ async function setMode(req, res) {
 
     const inspector = getInspector();
     if (inspector) {
-      const success = inspector.setMode(mode);
-      if (!success) {
+      if (!['MONITOR', 'IDS', 'IPS'].includes(mode)) {
         return res.status(400).json({
           success: false,
           message: 'Invalid mode'
@@ -403,6 +402,7 @@ async function setMode(req, res) {
       update: { value: mode },
       create: { key: 'idps_mode', value: mode }
     });
+    if (inspector) inspector.setMode(mode);
 
     res.json({
       success: true,

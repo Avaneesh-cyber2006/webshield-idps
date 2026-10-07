@@ -1,3 +1,4 @@
+require('dotenv').config({ path: require('path').join(__dirname, '../.env'), quiet: true });
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
@@ -14,8 +15,9 @@ async function main() {
   console.log('Starting seed...');
 
   // Hash passwords - these should be changed for production/LAN use
-  const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 10);
-  const userPassword = await bcrypt.hash(process.env.USER_PASSWORD || 'user123', 10);
+  if (!process.env.ADMIN_PASSWORD || !process.env.USER_PASSWORD) throw new Error('Set ADMIN_PASSWORD and USER_PASSWORD before seeding');
+  const adminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+  const userPassword = await bcrypt.hash(process.env.USER_PASSWORD, 10);
 
   console.log('Using admin email:', process.env.ADMIN_EMAIL || 'admin@webshield.local');
   console.log('Using user email:', process.env.USER_EMAIL || 'user@webshield.local');
@@ -23,7 +25,7 @@ async function main() {
   // Create users
   const admin = await prisma.user.upsert({
     where: { email: process.env.ADMIN_EMAIL || 'admin@webshield.local' },
-    update: { password: adminPassword },
+    update: {},
     create: {
       email: process.env.ADMIN_EMAIL || 'admin@webshield.local',
       password: adminPassword,
@@ -34,7 +36,7 @@ async function main() {
 
   const user = await prisma.user.upsert({
     where: { email: process.env.USER_EMAIL || 'user@webshield.local' },
-    update: { password: userPassword },
+    update: {},
     create: {
       email: process.env.USER_EMAIL || 'user@webshield.local',
       password: userPassword,
@@ -43,7 +45,7 @@ async function main() {
     }
   });
 
-  console.log('Created users:', admin, user);
+  console.log('Seed users ready:', admin.email, user.email);
 
   // Create security rules
   const rules = [
@@ -60,7 +62,7 @@ async function main() {
       category: 'signature',
       enabled: true,
       severity: 'HIGH',
-      score: 35,
+      score: 45,
       description: 'Detects cross-site scripting patterns in request parameters'
     },
     {
@@ -116,7 +118,7 @@ async function main() {
   for (const rule of rules) {
     await prisma.securityRule.upsert({
       where: { name: rule.name },
-      update: {},
+      update: { score: rule.score },
       create: rule
     });
   }

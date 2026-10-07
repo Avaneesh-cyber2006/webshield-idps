@@ -1,11 +1,13 @@
 import React from 'react'
-import { Outlet, Link, useNavigate } from 'react-router-dom'
+import { Outlet, Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Home, User, Search, MessageSquare, LogOut, Shield } from 'lucide-react'
 
 const DemoLayout = () => {
-  const { user, logout } = useAuth()
+  const { user, loading, logout } = useAuth()
   const navigate = useNavigate()
+  if (loading) return <div className="text-white">Loading...</div>
+  if (!user) return <Navigate to="/login" replace />
 
   const handleLogout = async () => {
     await logout()

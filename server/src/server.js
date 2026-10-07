@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env'), quiet: true });
 const http = require('http');
 const { Server } = require('socket.io');
 const { app, initializeIDPS } = require('./app');
@@ -12,23 +12,18 @@ const HOST = process.env.HOST || '0.0.0.0';
 const server = http.createServer(app);
 
 // Setup Socket.IO
-const io = new Server(server, {
-  cors: {
-    origin: '*', // Allow all origins for LAN demonstration
-    credentials: true
-  }
-});
+const io = new Server(server, { cors: require('./config/origins').corsOptions });
 
 setupSocketIO(io);
 
 // Initialize IDPS with Socket.IO
-initializeIDPS(io);
 
 // Start server
 async function startServer() {
   try {
     // Test database connection
     await prisma.$connect();
+    await initializeIDPS(io);
     console.log('Database connected successfully');
 
     // Start listening

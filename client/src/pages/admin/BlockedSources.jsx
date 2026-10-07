@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { ShieldAlert, Lock, Unlock, Plus } from 'lucide-react'
+import { Unlock, Plus } from 'lucide-react'
 import api from '../../services/api'
 
 const BlockedSources = () => {

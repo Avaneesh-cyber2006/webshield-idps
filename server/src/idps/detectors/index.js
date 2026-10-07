@@ -50,6 +50,7 @@ class DetectorRegistry {
       }
     } catch (error) {
       console.error('Error loading disabled detectors:', error);
+      throw error;
     }
   }
 

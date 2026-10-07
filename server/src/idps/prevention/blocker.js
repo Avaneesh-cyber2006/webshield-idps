@@ -38,7 +38,7 @@ class PreventionLayer {
       return blocked;
     } catch (error) {
       console.error('Error checking blocked source:', error);
-      return null;
+      throw error;
     }
   }
 
@@ -54,14 +54,15 @@ class PreventionLayer {
       });
 
       if (existingBlock) {
+        const stillActive = existingBlock.active && (!existingBlock.expiresAt || existingBlock.expiresAt > new Date());
         // If this is a manual block (no testRunId), never overwrite it
-        if (!existingBlock.testRunId) {
+        if (stillActive && testRunId && !existingBlock.testRunId) {
           console.log(`Manual block exists for ${sourceIp}, not overwriting with test-generated block`);
           return true; // Consider it blocked (preserving manual block)
         }
 
         // If this block belongs to a different test run, don't overwrite it
-        if (existingBlock.testRunId !== testRunId) {
+        if (stillActive && testRunId && existingBlock.testRunId !== testRunId) {
           console.log(`Block for ${sourceIp} belongs to different test run ${existingBlock.testRunId}, not overwriting`);
           return true; // Consider it blocked (preserving other run's block)
         }
@@ -73,7 +74,8 @@ class PreventionLayer {
             reason,
             blockedAt: new Date(),
             expiresAt,
-            active: true
+            active: true,
+            testRunId: testRunId || null
           }
         });
       } else {
@@ -93,7 +95,7 @@ class PreventionLayer {
       return true;
     } catch (error) {
       console.error('Error blocking source:', error);
-      return false;
+      throw error;
     }
   }
 
@@ -107,7 +109,7 @@ class PreventionLayer {
       return true;
     } catch (error) {
       console.error('Error unblocking source:', error);
-      return false;
+      throw error;
     }
   }
 

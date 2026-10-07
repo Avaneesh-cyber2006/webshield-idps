@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react'
-import { Clock, Globe, ArrowRight, Shield, AlertTriangle } from 'lucide-react'
+import React, { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
 import { useSocket } from '../../contexts/SocketContext'
 
@@ -8,12 +7,24 @@ const LiveTraffic = () => {
   const [filter, setFilter] = useState({ method: '', blocked: '' })
   const { socket } = useSocket()
 
+  const fetchTraffic = useCallback(async () => {
+    try {
+      const response = await api.get('/admin/traffic', { params: filter })
+      setTraffic(response.data.events)
+    } catch (error) {
+      console.error('Failed to fetch traffic:', error)
+    }
+  }, [filter])
+
   useEffect(() => {
     fetchTraffic()
 
     if (socket) {
       socket.on('traffic:new', (newEvent) => {
-        setTraffic(prev => [newEvent, ...prev].slice(0, 100))
+        if (filter.method && newEvent.method !== filter.method) return
+        const blocked = [403, 429].includes(newEvent.status)
+        if (filter.blocked && blocked !== (filter.blocked === 'true')) return
+        setTraffic(prev => [newEvent, ...prev.filter(event => event.requestId !== newEvent.requestId)].slice(0, 100))
       })
     }
 
@@ -22,16 +33,9 @@ const LiveTraffic = () => {
         socket.off('traffic:new')
       }
     }
-  }, [socket])
+  }, [socket, fetchTraffic, filter])
 
-  const fetchTraffic = async () => {
-    try {
-      const response = await api.get('/admin/traffic', { params: filter })
-      setTraffic(response.data.events)
-    } catch (error) {
-      console.error('Failed to fetch traffic:', error)
-    }
-  }
+
 
   const getActionBadge = (action) => {
     const styles = {
@@ -95,7 +99,7 @@ const LiveTraffic = () => {
           </thead>
           <tbody className="divide-y divide-dark-600">
             {traffic.map((event) => (
-              <tr key={event.id} className="hover:bg-dark-700">
+              <tr key={event.requestId} className="hover:bg-dark-700">
                 <td className="px-4 py-3 text-sm text-gray-300">
                   {new Date(event.timestamp).toLocaleTimeString()}
                 </td>

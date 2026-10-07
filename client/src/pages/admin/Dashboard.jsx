@@ -7,9 +7,11 @@ import {
   TrendingUp
 } from 'lucide-react'
 import api from '../../services/api'
+import { useNavigate } from 'react-router-dom'
 import { useSocket } from '../../contexts/SocketContext'
 
 const AdminDashboard = () => {
+  const navigate = useNavigate()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const { socket } = useSocket()
@@ -98,23 +100,23 @@ const AdminDashboard = () => {
         <div className="bg-dark-800 rounded-lg border border-dark-600 p-6">
           <h2 className="text-xl font-semibold text-white mb-4">System Status</h2>
           <div className="space-y-3">
-            <StatusItem label="Server Status" status="Online" />
-            <StatusItem label="Database" status="Connected" />
-            <StatusItem label="IDPS Engine" status="Active" />
-            <StatusItem label="Protection" status="Enabled" />
+            <StatusItem label="Server Status" status={stats ? 'Online' : 'Unavailable'} />
+            <StatusItem label="Database" status={stats ? 'Connected' : 'Unavailable'} />
+            <StatusItem label="IDPS Engine" status={stats ? 'Active' : 'Unavailable'} />
+            <StatusItem label="Protection" status={stats?.currentMode === 'IPS' ? 'Enabled' : 'Monitoring'} />
           </div>
         </div>
 
         <div className="bg-dark-800 rounded-lg border border-dark-600 p-6">
           <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
           <div className="space-y-3">
-            <button className="w-full bg-accent-600 hover:bg-accent-500 text-white font-semibold py-2 px-4 rounded transition-colors">
+            <button onClick={() => navigate('/admin/live-traffic')} className="w-full bg-accent-600 hover:bg-accent-500 text-white font-semibold py-2 px-4 rounded transition-colors">
               View Live Traffic
             </button>
-            <button className="w-full bg-dark-700 hover:bg-dark-600 text-white font-semibold py-2 px-4 rounded transition-colors">
+            <button onClick={() => navigate('/admin/test-lab')} className="w-full bg-dark-700 hover:bg-dark-600 text-white font-semibold py-2 px-4 rounded transition-colors">
               Run Security Tests
             </button>
-            <button className="w-full bg-dark-700 hover:bg-dark-600 text-white font-semibold py-2 px-4 rounded transition-colors">
+            <button onClick={() => navigate('/admin/analytics')} className="w-full bg-dark-700 hover:bg-dark-600 text-white font-semibold py-2 px-4 rounded transition-colors">
               View Analytics
             </button>
           </div>

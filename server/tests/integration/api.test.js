@@ -3,9 +3,10 @@ const setupTestDb = require('../setup-test-db');
 
 const assert = require('assert')
 const request = require('supertest')
-const { app } = require('../../src/app')
+const { app, initializeIDPS } = require('../../src/app')
 
 async function runApiTests() {
+  await initializeIDPS()
   console.log('Running API integration tests...')
   console.log('Using database:', setupTestDb.DATABASE_URL)
 
@@ -33,4 +34,4 @@ async function runApiTests() {
   console.log('✓ All API integration tests passed!')
 }
 
-runApiTests().catch(console.error)
+runApiTests().then(() => require('../../src/config/database').$disconnect()).catch(error => { console.error(error); process.exit(1) })

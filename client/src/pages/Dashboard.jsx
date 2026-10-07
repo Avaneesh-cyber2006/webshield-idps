@@ -1,7 +1,12 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import api from '../services/api'
 import { Shield, Activity, AlertTriangle } from 'lucide-react'
 
 const Dashboard = () => {
+  const [stats, setStats] = useState(null)
+  useEffect(() => {
+    api.get('/demo/dashboard').then(response => setStats({ ...response.data.data.stats, mode: response.data.data.mode })).catch(console.error)
+  }, [])
   return (
     <div>
       <h1 className="text-3xl font-bold text-white mb-8">Welcome to WebShield Demo</h1>
@@ -12,8 +17,8 @@ const Dashboard = () => {
             <Shield className="w-8 h-8 text-accent-500" />
             <span className="text-sm text-gray-400">Status</span>
           </div>
-          <div className="text-2xl font-bold text-white">Protected</div>
-          <div className="text-sm text-gray-400 mt-1">IDPS Active</div>
+          <div className="text-2xl font-bold text-white">{stats ? stats.mode === 'IPS' ? 'Protected' : 'Monitoring' : 'Loading'}</div>
+          <div className="text-sm text-gray-400 mt-1">{stats?.mode || 'Waiting for server'}</div>
         </div>
 
         <div className="bg-dark-800 rounded-lg border border-dark-600 p-6">
@@ -21,7 +26,7 @@ const Dashboard = () => {
             <Activity className="w-8 h-8 text-success-500" />
             <span className="text-sm text-gray-400">Requests</span>
           </div>
-          <div className="text-2xl font-bold text-white">0</div>
+          <div className="text-2xl font-bold text-white">{stats?.totalRequests ?? '—'}</div>
           <div className="text-sm text-gray-400 mt-1">Total requests</div>
         </div>
 
@@ -30,7 +35,7 @@ const Dashboard = () => {
             <AlertTriangle className="w-8 h-8 text-warning-500" />
             <span className="text-sm text-gray-400">Threats</span>
           </div>
-          <div className="text-2xl font-bold text-white">0</div>
+          <div className="text-2xl font-bold text-white">{stats?.securityEvents ?? '—'}</div>
           <div className="text-sm text-gray-400 mt-1">Security events</div>
         </div>
       </div>

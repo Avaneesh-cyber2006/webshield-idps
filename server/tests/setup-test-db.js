@@ -1,100 +1,17 @@
-/**
- * Test Database Setup
- * Creates and initializes an isolated test database for integration tests
- * MUST be imported BEFORE importing the application or Prisma client
- */
-const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
-
-const TEST_DB_PATH = path.join(__dirname, '../prisma/test.db');
-const DEMO_DB_PATH = path.join(__dirname, '../prisma/dev.db');
-
-console.log('Setting up isolated test database...');
-
-// Resolve actual DATABASE_URL before any operations
-const databaseUrl = process.env.TEST_DATABASE_URL || 'file:./prisma/test.db';
-const resolvedDbPath = path.resolve(__dirname, '../prisma', databaseUrl.replace('file:./', ''));
-
-console.log('Resolved database path:', resolvedDbPath);
-console.log('Demo database path:', path.resolve(DEMO_DB_PATH));
-
-// Reject configuration pointing to demo database
-if (resolvedDbPath === path.resolve(DEMO_DB_PATH)) {
-  console.error('ERROR: DATABASE_URL resolves to demo database');
-  console.error('Resolved:', resolvedDbPath);
-  console.error('Demo:', path.resolve(DEMO_DB_PATH));
-  console.error('This would cause destructive operations on the demo database');
-  process.exit(1);
-}
-
-console.log('✓ Database path verified safe (not demo database)');
-
-// Ensure we're not using the demo database
-if (fs.existsSync(TEST_DB_PATH)) {
-  console.log('Removing existing test database...');
-  fs.unlinkSync(TEST_DB_PATH);
-}
-
-// Verify demo database exists and is protected
-if (!fs.existsSync(DEMO_DB_PATH)) {
-  console.error('ERROR: Demo database does not exist at:', DEMO_DB_PATH);
-  console.error('Integration tests should not create the demo database.');
-  process.exit(1);
-}
-
-console.log('✓ Demo database verified and protected');
-
-// Set environment variable for test database BEFORE any Prisma client is created
-process.env.DATABASE_URL = databaseUrl;
-
-console.log('✓ Test database path configured:', process.env.DATABASE_URL);
-
-// Apply migrations to test database WITHOUT running seed
-console.log('Applying migrations to test database...');
-try {
-  execSync('npx prisma migrate deploy', {
-    cwd: path.join(__dirname, '..'),
-    stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL }
-  });
-  console.log('✓ Test database migrations applied');
-} catch (error) {
-  console.error('Failed to apply migrations to test database:', error);
-  process.exit(1);
-}
-
-// Run seed on test database only
-console.log('Seeding test database...');
-try {
-  // Ensure DATABASE_URL is set for the seed command
-  const seedEnv = { ...process.env, DATABASE_URL: process.env.DATABASE_URL };
-  console.log('Seed DATABASE_URL:', seedEnv.DATABASE_URL);
-  
-  execSync('node prisma/seed.js', {
-    cwd: path.join(__dirname, '..'),
-    stdio: 'inherit',
-    env: seedEnv
-  });
-  console.log('✓ Test database seeded');
-} catch (error) {
-  console.error('Failed to seed test database:', error);
-  process.exit(1);
-}
-
-// Verify the test database exists
-if (!fs.existsSync(TEST_DB_PATH)) {
-  console.error('ERROR: Test database was not created at:', TEST_DB_PATH);
-  process.exit(1);
-}
-
-console.log('✓ Test database verified at:', TEST_DB_PATH);
-console.log('✓ Test database setup complete');
-
-// Export the resolved database path for verification
-module.exports = {
-  TEST_DB_PATH,
-  DEMO_DB_PATH,
-  DATABASE_URL: process.env.DATABASE_URL
-};
+const { execFileSync } = require('child_process');
+require('dotenv').config({ path: path.join(__dirname, '../.env'), quiet: true });
+const DEMO_DB_PATH = path.resolve(__dirname, '../prisma', (process.env.DATABASE_URL || 'file:./dev.db').slice(5));
+const directory = fs.mkdtempSync(path.join(__dirname, '../prisma/test-run-'));
+const TEST_DB_PATH = path.join(directory, 'test.db');
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = 'file:' + TEST_DB_PATH.replaceAll('\\', '/');
+process.env.JWT_SECRET = 'isolated-test-fixture-signing-key-not-for-deployment';
+process.env.ADMIN_EMAIL = 'admin@webshield.local';
+process.env.ADMIN_PASSWORD = 'admin123';
+process.env.USER_EMAIL = 'user@webshield.local';
+process.env.USER_PASSWORD = 'user123';
+execFileSync(process.execPath, [path.join(__dirname, '../scripts/init-db.js')], { stdio: 'inherit', env: process.env });
+execFileSync(process.execPath, [path.join(__dirname, '../prisma/seed.js')], { stdio: 'inherit', env: process.env });
+module.exports = { TEST_DB_PATH, DEMO_DB_PATH, DATABASE_URL: process.env.DATABASE_URL };

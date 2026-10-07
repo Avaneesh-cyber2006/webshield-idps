@@ -14,6 +14,7 @@ const Contact = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
+    setSuccess(false)
 
     try {
       await api.post('/demo/contact', formData)
@@ -32,7 +33,7 @@ const Contact = () => {
 
       {success && (
         <div className="bg-success-500/10 border border-success-500 text-success-500 px-4 py-3 rounded mb-6">
-          Message sent successfully!
+          Demo message received. This demonstration does not send email.
         </div>
       )}
 

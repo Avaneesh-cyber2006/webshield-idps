@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
+import { Outlet, Link, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocket } from '../contexts/SocketContext'
 import api from '../services/api'
@@ -18,23 +18,29 @@ import {
 } from 'lucide-react'
 
 const AdminLayout = () => {
-  const { user, logout } = useAuth()
+  const { user, loading, logout } = useAuth()
   const { connected, joinAdminRoom, leaveAdminRoom } = useSocket()
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
+    if (loading || user?.role !== 'admin' || !connected) return
+    let active = true
     const joinRoom = async () => {
       try {
         const response = await api.get('/auth/socket-token')
-        joinAdminRoom(response.data.token)
+        if (active) joinAdminRoom(response.data.token)
       } catch (error) {
         console.error('Failed to get socket token:', error)
       }
     }
     joinRoom()
-    return () => leaveAdminRoom()
-  }, [joinAdminRoom, leaveAdminRoom])
+    return () => { active = false; leaveAdminRoom() }
+  }, [joinAdminRoom, leaveAdminRoom, connected, loading, user?.role])
+
+  if (loading) return <div className="text-white">Loading...</div>
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin') return <Navigate to="/demo/dashboard" replace />
 
   const handleLogout = async () => {
     await logout()

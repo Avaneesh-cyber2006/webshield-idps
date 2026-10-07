@@ -96,17 +96,7 @@ const Login = () => {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-dark-600">
-            <p className="text-sm text-gray-400 mb-2">Demo Credentials:</p>
-            <div className="space-y-2 text-sm">
-              <div className="text-gray-300">
-                <span className="text-accent-500">Admin:</span> admin@webshield.local / admin123
-              </div>
-              <div className="text-gray-300">
-                <span className="text-accent-500">User:</span> user@webshield.local / user123
-              </div>
-            </div>
-          </div>
+          <p className="mt-6 text-sm text-gray-400">Use the account configured by your administrator.</p>
         </div>
       </div>
     </div>

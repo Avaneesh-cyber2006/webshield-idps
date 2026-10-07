@@ -6,7 +6,6 @@ import { useSocket } from '../../contexts/SocketContext'
 const NetworkDemo = () => {
   const [serverAddress, setServerAddress] = useState('')
   const [clientAddress, setClientAddress] = useState('')
-  const [socketStatus, setSocketStatus] = useState(false)
   const [idpsMode, setIdpsMode] = useState('IDS')
   const { connected } = useSocket()
 
@@ -23,7 +22,7 @@ const NetworkDemo = () => {
       const response = await api.get('/admin/client-ip')
       setClientAddress(response.data.clientIp)
 
-      setSocketStatus(connected)
+
     } catch (error) {
       console.error('Failed to fetch network info:', error)
       setClientAddress('Error fetching IP')
@@ -56,7 +55,7 @@ const NetworkDemo = () => {
           <div className="space-y-3">
             <InfoRow label="Server Address" value={serverAddress} />
             <InfoRow label="Status" value="Online" status="success" />
-            <InfoRow label="Socket.IO" value={socketStatus ? 'Connected' : 'Disconnected'} status={socketStatus ? 'success' : 'error'} />
+            <InfoRow label="Socket.IO" value={connected ? 'Connected' : 'Disconnected'} status={connected ? 'success' : 'error'} />
             <InfoRow label="IDPS Mode" value={idpsMode} />
           </div>
         </div>

@@ -25,9 +25,14 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized
-      window.location.href = '/login'
+    const isAuthRequest = ['/auth/me', '/auth/login'].includes(error.config?.url)
+    if (!isAuthRequest) {
+      window.dispatchEvent(new CustomEvent('api-error', { detail: error.response?.data?.message || 'Cannot reach the server. Please try again.' }))
+    }
+    if (error.response?.status === 401 && !isAuthRequest && window.location.pathname !== '/login') {
+      // Session checks and failed sign-ins are handled by their callers.
+      // Never reload the login page in response to an unauthorized request.
+      window.location.replace('/login')
     }
     return Promise.reject(error)
   }
