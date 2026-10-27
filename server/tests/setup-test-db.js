@@ -1,0 +1,17 @@
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+require('dotenv').config({ path: path.join(__dirname, '../.env'), quiet: true });
+const DEMO_DB_PATH = path.resolve(__dirname, '../prisma', (process.env.DATABASE_URL || 'file:./dev.db').slice(5));
+const directory = fs.mkdtempSync(path.join(__dirname, '../prisma/test-run-'));
+const TEST_DB_PATH = path.join(directory, 'test.db');
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL = 'file:' + TEST_DB_PATH.replaceAll('\\', '/');
+process.env.JWT_SECRET = 'isolated-test-fixture-signing-key-not-for-deployment';
+process.env.ADMIN_EMAIL = 'admin@webshield.local';
+process.env.ADMIN_PASSWORD = 'admin123';
+process.env.USER_EMAIL = 'user@webshield.local';
+process.env.USER_PASSWORD = 'user123';
+execFileSync(process.execPath, [path.join(__dirname, '../scripts/init-db.js')], { stdio: 'inherit', env: process.env });
+execFileSync(process.execPath, [path.join(__dirname, '../prisma/seed.js')], { stdio: 'inherit', env: process.env });
+module.exports = { TEST_DB_PATH, DEMO_DB_PATH, DATABASE_URL: process.env.DATABASE_URL };
